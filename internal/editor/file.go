@@ -123,7 +123,7 @@ func (f *fileState) save(path string, d *document, options saveOptions) error {
 	if err := check(); err != nil {
 		return err
 	}
-	temp, err := os.CreateTemp(filepath.Dir(path), ".micromd-*")
+	temp, err := os.CreateTemp(filepath.Dir(path), ".tmd-*")
 	if err != nil {
 		return err
 	}

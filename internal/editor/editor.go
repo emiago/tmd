@@ -54,7 +54,7 @@ func Run(path string) error {
 		return err
 	}
 	if !term.IsTerminal(int(os.Stdin.Fd())) || !term.IsTerminal(int(os.Stdout.Fd())) || os.Getenv("TERM") == "dumb" {
-		return errors.New("micromd requires an interactive terminal on stdin and stdout")
+		return errors.New("tmd requires an interactive terminal on stdin and stdout")
 	}
 	screen, err := tcell.NewScreen()
 	if err != nil {
@@ -133,7 +133,7 @@ func (a *app) render() {
 	column := uniseg.GraphemeClusterCount(a.doc.text[line.start:min(a.doc.cursor, line.end)]) + 1
 	position := fmt.Sprintf("%s  %d:%d", modified, lineAt(a.projection.lines, a.doc.cursor)+1, column)
 	positionX := max(0, w-uniseg.StringWidth(position))
-	drawText(a.screen, 0, 0, max(0, positionX-1), "micromd  "+filepath.Base(a.file.path), bar)
+	drawText(a.screen, 0, 0, max(0, positionX-1), "tmd  "+filepath.Base(a.file.path), bar)
 	drawText(a.screen, positionX, 0, w, position, bar)
 	if a.help {
 		for i, text := range strings.Split(HelpText, "\n") {

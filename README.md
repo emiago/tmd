@@ -1,7 +1,7 @@
 <p align="center">
-  <img src="assets/icon.svg" width="136" height="136" alt="micromd terminal and Markdown icon">
+  <img src="assets/icon.svg" width="136" height="136" alt="TUI Markdown terminal and Markdown icon">
 </p>
-<h1 align="center">micromd</h1>
+<h1 align="center">TUI Markdown</h1>
 <p align="center"><strong>Markdown you can read. Plain text you can edit.</strong></p>
 <p align="center">A small terminal editor with nano-style controls and Markdown right where you type.</p>
 <p align="center"><a href="#quick-start">Quick start</a> · <a href="#keys">Keys</a> · <a href="#how-it-feels">How it feels</a> · <a href="#development">Development</a></p>
@@ -11,20 +11,32 @@
 From this checkout, with Go 1.22 or newer:
 
 ```sh
-go install ./cmd/micromd
-micromd notes.md
+go install ./cmd/tmd
+tmd notes.md
 ```
 
 Go installs the binary into `GOBIN`, or `$(go env GOPATH)/bin` when `GOBIN` is
 unset. Add that directory to your `PATH` if needed. To build locally instead:
 
 ```sh
-go build -o bin/micromd ./cmd/micromd
-./bin/micromd notes.md
+go build -o bin/tmd ./cmd/tmd
+./bin/tmd notes.md
 ```
 
+To print formatted Markdown without opening the editor, use `tmd --render`:
+
+```sh
+tmd --render notes.md
+some-command | tmd --render
+```
+
+This reads a file or stdin (`-` also selects stdin), renders ordinary Markdown,
+and leaves triple-backtick blocks and their contents literal. There is no
+language-specific parsing. Output uses terminal styles when printed to a terminal
+and plain text when redirected. Render input can use any file extension.
+
 With Make available, `make build` and `make install` also stamp the version from
-`VERSION`. `micromd --help` shows all controls; `micromd --version` identifies
+`VERSION`. `tmd --help` shows all controls; `tmd --version` identifies
 the build. Run it without arguments to show help.
 
 ## How it feels
@@ -35,7 +47,7 @@ editing. Leave the line and it renders again. Your document stays Markdown
 throughout; there is no conversion step.
 
 ```text
-micromd  notes.md *                                      4:12
+tmd  notes.md *                                      4:12
 
 Weekend plans
 • ☑ Book the train
@@ -89,7 +101,7 @@ checkout or background service is required.
 Existing line endings, final-newline state, untouched Markdown source, and file
 permissions are preserved. New files use permission mode `0600`. Saves stage a
 temporary file beside the destination before installing it atomically. If the
-file has changed on disk, micromd retains your buffer and asks you to use Save As
+file has changed on disk, tmd retains your buffer and asks you to use Save As
 with a new destination. Save As never overwrites another existing file.
 
 Fenced code is literal. Other Markdown features such as tables, HTML, images,
@@ -97,7 +109,7 @@ and link destinations remain visible as source rather than becoming a full
 document preview. Files must be regular UTF-8 text; directories, symlinks, and
 binary data are rejected.
 
-For `QUEUE.md`, micromd also honors Microspec's `.microspec-queue.lock` while
+For `QUEUE.md`, tmd also honors Microspec's `.microspec-queue.lock` while
 saving, so it can coexist with queue writers without importing Microspec or
 requiring its installation.
 

@@ -1,4 +1,4 @@
-module micromd
+module tmd
 
 go 1.22
 
