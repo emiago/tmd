@@ -39,6 +39,7 @@ type app struct {
 	replaced             int
 	pasting              bool
 	paste                strings.Builder
+	clipboard            string
 	goalColumn           int
 }
 
@@ -173,7 +174,7 @@ func (a *app) render() {
 		}
 	}
 	if h >= 3 {
-		drawText(a.screen, 0, h-1, w, "^G Help  ^O Save  ^X Exit  ^W Find  ^\\ Replace  ^U Undo  ^R Redo", bar)
+		drawText(a.screen, 0, h-1, w, "^G Help  ^O Save  ^X Exit  ^W Find  ^\\ Replace  ^U Undo  ^R Redo  ^K Cut  ^V Paste  M-6 Copy  M-K Delete line", bar)
 	}
 	a.screen.Show()
 }
@@ -270,6 +271,10 @@ func (a *app) editorKey(e *tcell.EventKey) {
 			a.clearMatch()
 		case 'w':
 			a.findNext()
+		case '6':
+			a.editLine(false, true)
+		case 'k':
+			a.editLine(true, false)
 		}
 		return
 	}
@@ -337,11 +342,36 @@ func (a *app) editorKey(e *tcell.EventKey) {
 	case tcell.KeyCtrlR:
 		a.doc.redoEdit()
 		a.clearMatch()
+	case tcell.KeyCtrlK:
+		a.editLine(true, true)
+	case tcell.KeyCtrlV:
+		a.doc.insert(a.clipboard)
+		a.clearMatch()
 	case tcell.KeyCtrlC:
 		a.message = "Use Ctrl+X to exit."
 	}
 	if move {
 		a.goalColumn = -1
+	}
+}
+
+// Line commands operate on the complete source line, including its line break.
+func (a *app) editLine(remove, copy bool) {
+	lines := sourceLines(a.doc.text)
+	index := lineAt(lines, a.doc.cursor)
+	line := lines[index]
+	if copy {
+		a.clipboard = a.doc.text[line.start:line.after]
+		a.message = "Line copied"
+	}
+	if remove {
+		a.doc.edit(line.start, line.after, "")
+		a.clearMatch()
+		if copy {
+			a.message = "Line cut"
+		} else {
+			a.message = "Line deleted"
+		}
 	}
 }
 
@@ -522,8 +552,12 @@ Page Up/Down    Move by a page     Enter      New line
 Ctrl+O          Save / Save As     Ctrl+X     Exit
 Ctrl+W          Literal search    Alt+W      Find next
 Ctrl+\          Find and replace  Ctrl+U/R   Undo / redo
+Ctrl+K          Cut source line   Alt+6      Copy source line
+Alt+K           Delete source line Ctrl+V    Paste editor clipboard
 Esc / Ctrl+C    Cancel a prompt   Ctrl+U     Clear prompt
 
+Line cut/copy use an internal clipboard; paste inserts at the cursor.
+For the system clipboard, use your terminal's copy/paste shortcuts.
 Search is case-sensitive and wraps through the source.
 Replace offers yes, no, all, or cancel; All is undoable.
 Checkboxes are display-only: edit [ ] / [x] by typing.

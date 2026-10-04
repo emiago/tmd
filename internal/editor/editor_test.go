@@ -36,6 +36,55 @@ func typeText(a *app, text string) {
 }
 func alt(a *app, r rune) { a.handle(tcell.NewEventKey(tcell.KeyRune, r, tcell.ModAlt)) }
 
+func TestLineClipboardShortcuts(t *testing.T) {
+	for _, tc := range []struct{ source, copied, removed string }{
+		{"first\n**界** long line\nlast", "**界** long line\n", "first\nlast"},
+		{"first\r\nsecond\r\nlast", "second\r\n", "first\r\nlast"},
+		{"first\n\nlast", "\n", "first\nlast"},
+		{"first\nlast", "last", "first\n"},
+		{"only", "only", ""},
+		{"", "", ""},
+	} {
+		t.Run(tc.source, func(t *testing.T) {
+			a, _ := testApp(t, tc.source, 8, 24)
+			lines := sourceLines(tc.source)
+			a.doc.cursor = lines[min(1, len(lines)-1)].end
+			cursor := a.doc.cursor
+			alt(a, '6')
+			if a.clipboard != tc.copied || a.doc.text != tc.source || a.doc.cursor != cursor || len(a.doc.undo) != 0 {
+				t.Fatal("copy changed document or copied an incomplete source line")
+			}
+			key(a, tcell.KeyCtrlK)
+			if a.doc.text != tc.removed || a.clipboard != tc.copied {
+				t.Fatalf("cut: text %q, clipboard %q", a.doc.text, a.clipboard)
+			}
+			key(a, tcell.KeyCtrlV)
+			if a.doc.text != tc.source {
+				t.Fatalf("paste after cut: %q; want %q", a.doc.text, tc.source)
+			}
+			if tc.copied == "" {
+				return
+			}
+			key(a, tcell.KeyCtrlU)
+			if a.doc.text != tc.removed {
+				t.Fatal("paste was not one undoable edit")
+			}
+			key(a, tcell.KeyCtrlU)
+			if a.doc.text != tc.source || a.doc.cursor != cursor {
+				t.Fatal("cut undo did not restore source and cursor")
+			}
+			alt(a, 'k')
+			if a.doc.text != tc.removed || a.clipboard != tc.copied {
+				t.Fatal("delete line changed clipboard or removed the wrong text")
+			}
+			key(a, tcell.KeyCtrlU)
+			if a.doc.text != tc.source {
+				t.Fatal("delete line was not undoable")
+			}
+		})
+	}
+}
+
 func TestFencedCodeBackground(t *testing.T) {
 	a, screen := testApp(t, "before\n```bash\nabcdefghijk\n\n```\nafter", 8, 24)
 	check := func() {

@@ -85,11 +85,18 @@ Weekend plans
 | Alt+W | Find the next match |
 | Ctrl+\ | Find and replace |
 | Ctrl+U / Ctrl+R | Undo / redo |
+| Ctrl+K | Cut the whole source line |
+| Alt+6 | Copy the whole source line |
+| Alt+K | Delete the whole source line |
+| Ctrl+V | Paste the editor's internal clipboard at the cursor |
 | Ctrl+G | Open help |
 | Esc / Ctrl+C | Cancel a prompt |
 | Ctrl+U (inside a prompt) | Clear the current prompt |
 
-Paste using your terminal's usual paste shortcut. Bracketed multiline paste is
+Line cut/copy includes the line break when present and uses an internal clipboard.
+Cut, delete, and paste can each be undone with Ctrl+U. Wrapped lines are treated
+as one source line. For system clipboard copy/paste, use your terminal's usual
+shortcuts. Bracketed multiline paste is
 one undoable edit, and pasted control characters do not trigger editor commands.
 Checkboxes are visual indicators: edit `[ ]` or `[x]` on the active line.
 
