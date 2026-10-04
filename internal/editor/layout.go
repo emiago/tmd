@@ -8,6 +8,10 @@ import (
 	"github.com/rivo/uniseg"
 )
 
+var baseStyle = tcell.StyleDefault.
+	Foreground(tcell.NewHexColor(0xe6e6e6)).
+	Background(tcell.NewHexColor(0x222222))
+
 type displayCell struct {
 	x          int
 	text       string
@@ -137,7 +141,7 @@ func nearest(row displayRow, x int) int {
 }
 
 func cellStyle(f format) tcell.Style {
-	s := tcell.StyleDefault
+	s := baseStyle
 	if f&bold != 0 {
 		s = s.Bold(true)
 	}
@@ -145,10 +149,10 @@ func cellStyle(f format) tcell.Style {
 		s = s.Italic(true)
 	}
 	if f&code != 0 {
-		s = s.Foreground(tcell.ColorTeal)
+		s = s.Foreground(tcell.NewHexColor(0x7dcfff))
 	}
 	if f&heading != 0 {
-		s = s.Foreground(tcell.ColorOlive)
+		s = s.Foreground(tcell.NewHexColor(0xe5c07b))
 	}
 	return s
 }

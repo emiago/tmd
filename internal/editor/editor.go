@@ -43,6 +43,7 @@ type app struct {
 }
 
 func newApp(screen tcell.Screen, f *fileState, d *document, options saveOptions) *app {
+	screen.SetStyle(baseStyle)
 	return &app{screen: screen, file: f, doc: d, options: options, matchStart: -1, matchEnd: -1, goalColumn: -1}
 }
 
@@ -124,7 +125,7 @@ func (a *app) render() {
 	if a.layout.cursorRow >= a.top+height {
 		a.top = a.layout.cursorRow - height + 1
 	}
-	bar := tcell.StyleDefault.Reverse(true)
+	bar := baseStyle.Reverse(true)
 	line := a.projection.lines[lineAt(a.projection.lines, a.doc.cursor)]
 	modified := ""
 	if a.file.modified(a.doc) {
@@ -140,7 +141,7 @@ func (a *app) render() {
 			if i+1 >= h-2 {
 				break
 			}
-			drawText(a.screen, 0, i+1, w, text, tcell.StyleDefault)
+			drawText(a.screen, 0, i+1, w, text, baseStyle)
 		}
 		a.screen.HideCursor()
 	} else {
@@ -163,7 +164,7 @@ func (a *app) render() {
 		if a.prompt != nil {
 			a.renderPrompt(w, h-2)
 		} else {
-			drawText(a.screen, 0, h-2, w, a.message, tcell.StyleDefault)
+			drawText(a.screen, 0, h-2, w, a.message, baseStyle)
 		}
 	}
 	if h >= 3 {
@@ -175,9 +176,9 @@ func (a *app) render() {
 func (a *app) renderPrompt(width, y int) {
 	p := a.prompt
 	labelWidth := min(uniseg.StringWidth(p.label), max(0, width/2))
-	x := drawText(a.screen, 0, y, labelWidth, p.label, tcell.StyleDefault.Bold(true))
+	x := drawText(a.screen, 0, y, labelWidth, p.label, baseStyle.Bold(true))
 	if p.kind == "exit" || p.kind == "confirm" {
-		drawText(a.screen, x, y, width, p.value, tcell.StyleDefault)
+		drawText(a.screen, x, y, width, p.value, baseStyle)
 		a.screen.HideCursor()
 		return
 	}
@@ -185,7 +186,7 @@ func (a *app) renderPrompt(width, y int) {
 	for start < p.cursor && x+uniseg.StringWidth(p.value[start:p.cursor]) >= width {
 		start = next(p.value, start)
 	}
-	drawText(a.screen, x, y, width, p.value[start:], tcell.StyleDefault)
+	drawText(a.screen, x, y, width, p.value[start:], baseStyle)
 	a.screen.ShowCursor(min(width-1, x+uniseg.StringWidth(p.value[start:p.cursor])), y)
 }
 
