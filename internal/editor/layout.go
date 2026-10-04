@@ -10,7 +10,7 @@ import (
 
 var baseStyle = tcell.StyleDefault.
 	Foreground(tcell.NewHexColor(0xe6e6e6)).
-	Background(tcell.NewHexColor(0x222222))
+	Background(tcell.NewHexColor(0x202020))
 
 type displayCell struct {
 	x          int
