@@ -36,6 +36,42 @@ func typeText(a *app, text string) {
 }
 func alt(a *app, r rune) { a.handle(tcell.NewEventKey(tcell.KeyRune, r, tcell.ModAlt)) }
 
+func TestFencedCodeBackground(t *testing.T) {
+	a, screen := testApp(t, "before\n```bash\nabcdefghijk\n\n```\nafter", 8, 24)
+	check := func() {
+		t.Helper()
+		for index, row := range a.layout.rows {
+			for x := 0; x < 8; x++ {
+				_, _, style, _ := screen.GetContent(x, index+1)
+				_, bg, _ := style.Decompose()
+				if bg == tcell.ColorDefault {
+					_, bg, _ = baseStyle.Decompose()
+				}
+				want := tcell.NewHexColor(0x202020)
+				if row.line >= 1 && row.line <= 4 {
+					want = tcell.NewHexColor(0x161616)
+				}
+				if bg != want {
+					t.Fatalf("line %d, cell %d:%d: background %v; want %v", row.line, x, index+1, bg, want)
+				}
+			}
+		}
+	}
+	check() // Includes wrapped text, blank content, and hidden fence rows.
+	a.doc.cursor = strings.Index(a.doc.text, "```bash")
+	a.render()
+	check() // Revealed source keeps the block background.
+	a.doc.edit(0, len(a.doc.text), "plain")
+	a.render()
+	for x := 0; x < 8; x++ {
+		_, _, style, _ := screen.GetContent(x, 1)
+		_, bg, _ := style.Decompose()
+		if bg != tcell.ColorDefault && bg != tcell.NewHexColor(0x202020) {
+			t.Fatal("block background persisted after editing away the block")
+		}
+	}
+}
+
 func TestKeyboardEditingPasteAndUndo(t *testing.T) {
 	a, _ := testApp(t, "- [ ] **task**\n", 80, 24)
 	key(a, tcell.KeyEnd)

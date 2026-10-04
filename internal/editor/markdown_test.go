@@ -19,7 +19,7 @@ func TestMarkdownProjectionAndActiveSource(t *testing.T) {
 	d.cursor = len(source)
 	p := project(source)
 	l := makeLayout(d, p, 100)
-	want := []string{"Heading", "• ☐ bold and italic and code", "• ☑ both", "", "```md", "- [ ] **literal**", "```", "[link](https://example.com)", "active"}
+	want := []string{"Heading", "• ☐ bold and italic and code", "• ☑ both", "", "", "- [ ] **literal**", "", "[link](https://example.com)", "active"}
 	if len(l.rows) != len(want) {
 		t.Fatalf("got %d rows; want %d", len(l.rows), len(want))
 	}
@@ -60,8 +60,49 @@ func TestWrappingWideTextAndCursor(t *testing.T) {
 	}
 }
 
+func TestFencedCodeSourceAndCursor(t *testing.T) {
+	source := "before\n```bash\n\techo **literal**\n```\nafter"
+	d := newDocument([]byte(source))
+	p := project(source)
+	for _, active := range []int{0, 1, 2, 3, 4} {
+		d.cursor = p.lines[active].start
+		l := makeLayout(d, p, 80)
+		want := []string{"before", "", "    echo **literal**", "", "after"}
+		if active == 1 {
+			want[1] = "```bash"
+		}
+		if active == 3 {
+			want[3] = "```"
+		}
+		for i, row := range l.rows {
+			if got := rowText(row); got != want[i] {
+				t.Fatalf("active line %d, row %d: %q; want %q", active, i, got, want[i])
+			}
+		}
+		if l.cursorRow != active || l.cursorX != 0 {
+			t.Fatalf("active line %d: cursor %d:%d", active, l.cursorRow, l.cursorX)
+		}
+	}
+	for _, f := range p.formats[strings.Index(source, "echo"):strings.Index(source, "\n```\nafter")] {
+		if f != code|codeBlock {
+			t.Fatalf("code contents have format %d; want %d", f, code|codeBlock)
+		}
+	}
+	// Editing a fence reprojects the source, and undo restores the block.
+	d.edit(p.lines[1].start, p.lines[1].end, "plain")
+	d.cursor = 0
+	l := makeLayout(d, project(d.text), 80)
+	if rowText(l.rows[1]) != "plain" || rowText(l.rows[2]) != "    echo literal" {
+		t.Fatal("removing the opening fence did not reproject the body")
+	}
+	d.undoEdit()
+	if d.text != source {
+		t.Fatal("undo did not restore fenced source")
+	}
+}
+
 func TestMarkdownEdgeCasesRemainEditable(t *testing.T) {
-	for _, source := range []string{"#", "#\n", "## \r\n", "Heading\n=======\n", "***", "- [ ]", "- [x]\n", "` `", "` a `", "__bold *nested*__", "a\\*literal*", "\t\n", "> # quote\n", "- # item\n", "**line\nbreak**", "<div>**literal**</div>"} {
+	for _, source := range []string{"#", "#\n", "## \r\n", "Heading\n=======\n", "***", "- [ ]", "- [x]\n", "` `", "` a `", "__bold *nested*__", "a\\*literal*", "\t\n", "> # quote\n", "- # item\n", "**line\nbreak**", "<div>**literal**</div>", "```", "```\n```", "~~~bash\r\n\t界\r\n~~~", "> ```bash\n> echo hi\n> ```", "- ```\n  code\n  ```"} {
 		t.Run(source, func(t *testing.T) {
 			d := newDocument([]byte(source))
 			p := project(source)
@@ -102,7 +143,7 @@ func TestCursorAroundExpandedTabs(t *testing.T) {
 }
 
 func FuzzMarkdownLayout(f *testing.F) {
-	for _, s := range []string{"# Heading\n- [ ] **bold**\n", "#\r\n", "👩‍💻\ttext", "**nested *word***"} {
+	for _, s := range []string{"# Heading\n- [ ] **bold**\n", "#\r\n", "👩‍💻\ttext", "**nested *word***", "```bash\n\techo **literal**\n```", "~~~\r\n~~~"} {
 		f.Add(s, uint8(20))
 	}
 	f.Fuzz(func(t *testing.T, s string, w uint8) {

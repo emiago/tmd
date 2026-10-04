@@ -8,7 +8,7 @@ import (
 )
 
 // Render prints the editor's Markdown projection without an active source line.
-// Fenced blocks remain literal; their contents need no language-specific parser.
+// Fenced blocks omit their fences and use a single style for literal contents.
 func Render(out io.Writer, source string, styled bool) error {
 	if !utf8.ValidString(source) || strings.IndexByte(source, 0) >= 0 {
 		return errors.New("input must contain UTF-8 text without binary data")
@@ -39,6 +39,9 @@ func Render(out io.Writer, source string, styled bool) error {
 				}
 				if f&heading != 0 {
 					codes = append(codes, "33")
+				}
+				if f&codeBlock != 0 {
+					codes = append(codes, "48;2;22;22;22")
 				}
 				result.WriteString("\x1b[" + strings.Join(codes, ";") + "m")
 			}

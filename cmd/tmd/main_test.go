@@ -20,7 +20,7 @@ func TestRenderCLI(t *testing.T) {
 		code        int
 	}{
 		{[]string{"--render"}, "**stdin**", "stdin", 0},
-		{[]string{"--render", "-"}, "```\n**literal**\n```", "```\n**literal**\n```", 0},
+		{[]string{"--render", "-"}, "```\n**literal**\n```", "**literal**\n", 0},
 		{[]string{"--render", path}, "", "file", 0},
 		{[]string{"--render", path + ".missing"}, "", "", 2},
 		{[]string{"--render", "a", "b"}, "", "", 2},

@@ -7,7 +7,9 @@ import (
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
+	"github.com/yuin/goldmark/util"
 )
 
 type format uint8
@@ -17,6 +19,7 @@ const (
 	italic
 	code
 	heading
+	codeBlock
 )
 
 type replacement struct {
@@ -28,15 +31,43 @@ type projection struct {
 	formats      []format
 	replacements map[int]replacement
 	lines        []sourceLine
+	codeLines    map[int]bool
 }
 
-var markdown = goldmark.New(goldmark.WithExtensions(extension.TaskList))
+// Goldmark's fenced nodes retain content spans but not the fences themselves.
+// Record those offsets while parsing, including empty and unclosed blocks.
+type fencedParser struct{ parser.BlockParser }
+
+func (p fencedParser) Open(parent ast.Node, reader text.Reader, pc parser.Context) (ast.Node, parser.State) {
+	_, segment := reader.PeekLine()
+	node, state := p.BlockParser.Open(parent, reader, pc)
+	if node != nil {
+		node.SetAttributeString("openingFence", segment.Start)
+	}
+	return node, state
+}
+
+func (p fencedParser) Continue(node ast.Node, reader text.Reader, pc parser.Context) parser.State {
+	_, segment := reader.PeekLine()
+	state := p.BlockParser.Continue(node, reader, pc)
+	if state == parser.Close {
+		node.SetAttributeString("closingFence", segment.Start)
+	}
+	return state
+}
+
+var markdown = goldmark.New(
+	goldmark.WithExtensions(extension.TaskList),
+	goldmark.WithParserOptions(parser.WithBlockParsers(
+		util.Prioritized(fencedParser{parser.NewFencedCodeBlockParser()}, 699),
+	)),
+)
 
 // project annotates source ranges instead of rendering HTML and attempting to
-// reconstruct Markdown. Unsupported syntax and fenced examples stay literal.
+// reconstruct Markdown. Code contents and unsupported syntax stay literal.
 func project(source string) *projection {
 	data := []byte(source)
-	p := &projection{hidden: make([]bool, len(data)), formats: make([]format, len(data)), replacements: make(map[int]replacement), lines: sourceLines(source)}
+	p := &projection{hidden: make([]bool, len(data)), formats: make([]format, len(data)), replacements: make(map[int]replacement), lines: sourceLines(source), codeLines: make(map[int]bool)}
 	hide := func(a, b int) {
 		for i := max(0, a); i < min(len(data), b); i++ {
 			p.hidden[i] = true
@@ -54,8 +85,25 @@ func project(source string) *projection {
 		if t, ok := n.(*ast.Text); ok {
 			return t.Segment.Start, t.Segment.Stop
 		}
-		switch n.(type) {
-		case *ast.FencedCodeBlock, *ast.CodeBlock, *ast.HTMLBlock, *ast.RawHTML:
+		switch node := n.(type) {
+		case *ast.FencedCodeBlock:
+			for _, name := range []string{"openingFence", "closingFence"} {
+				if offset, ok := node.AttributeString(name); ok {
+					index := lineAt(p.lines, offset.(int))
+					line := p.lines[index]
+					p.codeLines[index] = true
+					hide(line.start, line.after)
+				}
+			}
+			for i := 0; i < node.Lines().Len(); i++ {
+				seg := node.Lines().At(i)
+				index := lineAt(p.lines, seg.Start)
+				p.codeLines[index] = true
+				line := p.lines[index]
+				style(line.start, line.after, code|codeBlock)
+			}
+			return -1, -1
+		case *ast.CodeBlock, *ast.HTMLBlock, *ast.RawHTML:
 			return -1, -1
 		}
 		a, b := -1, -1

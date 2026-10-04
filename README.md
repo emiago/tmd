@@ -31,8 +31,9 @@ some-command | tmd --render
 ```
 
 This reads a file or stdin (`-` also selects stdin), renders ordinary Markdown,
-and leaves triple-backtick blocks and their contents literal. There is no
-language-specific parsing. Output uses terminal styles when printed to a terminal
+and hides code fences and language labels while preserving their contents and
+whitespace. Code uses one style with a dark background and no language-specific coloring.
+Output uses terminal styles when printed to a terminal
 and plain text when redirected. Render input can use any file extension.
 
 With Make available, `make build` and `make install` also stamp the version from
@@ -104,7 +105,10 @@ temporary file beside the destination before installing it atomically. If the
 file has changed on disk, tmd retains your buffer and asks you to use Save As
 with a new destination. Save As never overwrites another existing file.
 
-Fenced code is literal. Other Markdown features such as tables, HTML, images,
+Fenced code hides its fences and language label; the contents stay literal and
+use a uniform code style. Fence lines remain as blank rows in the editor so you
+can move onto them to reveal and edit the source. Other Markdown features such
+as tables, HTML, images,
 and link destinations remain visible as source rather than becoming a full
 document preview. Files must be regular UTF-8 text; directories, symlinks, and
 binary data are rejected.

@@ -12,6 +12,8 @@ var baseStyle = tcell.StyleDefault.
 	Foreground(tcell.NewHexColor(0xe6e6e6)).
 	Background(tcell.NewHexColor(0x202020))
 
+var codeBackground = tcell.NewHexColor(0x161616)
+
 type displayCell struct {
 	x          int
 	text       string
@@ -46,6 +48,9 @@ func makeLayout(d *document, p *projection, width int) layout {
 		row := displayRow{line: index, points: []point{{0, line.start}}}
 		x := 0
 		add := func(start, end int, text string, f format) {
+			if p.codeLines[index] {
+				f |= codeBlock
+			}
 			text = safeText(text)
 			w := uniseg.StringWidth(text)
 			if w == 0 {
@@ -153,6 +158,9 @@ func cellStyle(f format) tcell.Style {
 	}
 	if f&heading != 0 {
 		s = s.Foreground(tcell.NewHexColor(0xe5c07b))
+	}
+	if f&codeBlock != 0 {
+		s = s.Background(codeBackground)
 	}
 	return s
 }

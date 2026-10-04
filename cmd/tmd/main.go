@@ -77,12 +77,14 @@ Usage:
 
 A small terminal editor with nano-style controls and inline Markdown display.
 Headings, bold, italic, inline code, lists, and checkboxes are rendered;
-the current line reveals its source while you edit. Unsupported syntax
-and fenced examples stay literal. There are no formatting commands.
+the current line reveals its source while you edit. Code fences and language
+labels are hidden until their line is active; contents use one code style.
+Unsupported syntax stays literal. There are no formatting commands.
 
 Use --render to print Markdown from a file or stdin without opening the editor.
-Terminal output uses styles; redirected output is plain text. Fenced blocks
-stay literal, with no language-specific parsing. Input may use any file extension.
+Terminal output uses styles; redirected output is plain text. Code fences and
+language labels are omitted; contents stay literal without syntax coloring.
+Input may use any file extension.
 
 Open .md, .markdown, or .mdx files. Missing files start empty and are created
 only on save. No Git checkout, plugin, or background service is required.

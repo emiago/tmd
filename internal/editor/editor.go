@@ -146,6 +146,11 @@ func (a *app) render() {
 		a.screen.HideCursor()
 	} else {
 		for r := a.top; r < len(a.layout.rows) && r-a.top < height && r-a.top+1 < h-2; r++ {
+			if a.projection.codeLines[a.layout.rows[r].line] {
+				for x := 0; x < w; x++ {
+					a.screen.SetContent(x, r-a.top+1, ' ', nil, cellStyle(codeBlock))
+				}
+			}
 			for _, cell := range a.layout.rows[r].cells {
 				style := cellStyle(cell.format)
 				if a.matchStart >= 0 && cell.start < a.matchEnd && cell.end > a.matchStart {
