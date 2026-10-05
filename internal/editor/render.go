@@ -35,7 +35,7 @@ func Render(out io.Writer, source string, styled bool) error {
 					codes = append(codes, "3")
 				}
 				if f&code != 0 {
-					codes = append(codes, "36")
+					codes = append(codes, "38;2;229;167;107")
 				}
 				if f&heading != 0 {
 					codes = append(codes, "33")

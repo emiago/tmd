@@ -41,7 +41,7 @@ func TestRenderFencedCodeUsesUniformStyle(t *testing.T) {
 		if err := Render(&out, source, true); err != nil {
 			t.Fatal(err)
 		}
-		if want := "\x1b[36;48;2;22;22;22m**literal** # text\n\x1b[0m"; out.String() != want {
+		if want := "\x1b[38;2;229;167;107;48;2;22;22;22m**literal** # text\n\x1b[0m"; out.String() != want {
 			t.Fatalf("language %q: got %q; want %q", language, out.String(), want)
 		}
 	}
@@ -68,7 +68,7 @@ func TestRenderCodeBackgroundStopsAfterBlock(t *testing.T) {
 	if err := Render(&out, "```bash\necho hi\n```\nafter `inline`", true); err != nil {
 		t.Fatal(err)
 	}
-	want := "\x1b[36;48;2;22;22;22mecho hi\n\x1b[0mafter \x1b[36minline\x1b[0m"
+	want := "\x1b[38;2;229;167;107;48;2;22;22;22mecho hi\n\x1b[0mafter \x1b[38;2;229;167;107minline\x1b[0m"
 	if out.String() != want {
 		t.Fatalf("output=%q; want %q", out.String(), want)
 	}

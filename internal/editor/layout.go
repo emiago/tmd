@@ -154,7 +154,7 @@ func cellStyle(f format) tcell.Style {
 		s = s.Italic(true)
 	}
 	if f&code != 0 {
-		s = s.Foreground(tcell.NewHexColor(0x7dcfff))
+		s = s.Foreground(tcell.NewHexColor(0xe5a76b))
 	}
 	if f&heading != 0 {
 		s = s.Foreground(tcell.NewHexColor(0xe5c07b))
