@@ -38,7 +38,11 @@ func Render(out io.Writer, source string, styled bool) error {
 					codes = append(codes, "38;2;229;167;107")
 				}
 				if f&heading != 0 {
-					codes = append(codes, "33")
+					if f&heading1 != 0 {
+						codes = append(codes, "38;2;255;223;93")
+					} else {
+						codes = append(codes, "33")
+					}
 				}
 				if f&codeBlock != 0 {
 					codes = append(codes, "48;2;22;22;22")

@@ -24,7 +24,7 @@ type app struct {
 	screen               tcell.Screen
 	file                 *fileState
 	doc                  *document
-	options              saveOptions
+	ignoredChange        *fileState
 	projection           *projection
 	projectedRevision    uint64
 	layout               layout
@@ -43,14 +43,13 @@ type app struct {
 	goalColumn           int
 }
 
-func newApp(screen tcell.Screen, f *fileState, d *document, options saveOptions) *app {
+func newApp(screen tcell.Screen, f *fileState, d *document) *app {
 	screen.SetStyle(baseStyle)
-	return &app{screen: screen, file: f, doc: d, options: options, matchStart: -1, matchEnd: -1, goalColumn: -1}
+	return &app{screen: screen, file: f, doc: d, matchStart: -1, matchEnd: -1, goalColumn: -1}
 }
 
 // Run opens one Markdown document in the terminal.
 func Run(path string) error {
-	options := saveOptions{QueueLock: lockQueue}
 	f, d, err := openFile(path)
 	if err != nil {
 		return err
@@ -81,7 +80,8 @@ func Run(path string) error {
 		case <-done:
 		}
 	}()
-	a := newApp(screen, f, d, options)
+	go pollFileEvents(screen, done)
+	a := newApp(screen, f, d)
 	for !a.quit {
 		a.render()
 		event := screen.PollEvent()
@@ -92,6 +92,10 @@ func Run(path string) error {
 		case *tcell.EventError:
 			return errors.New(e.Error())
 		case *tcell.EventInterrupt:
+			if _, ok := e.Data().(filePoll); ok {
+				a.handle(e)
+				continue
+			}
 			return fmt.Errorf("editor interrupted by %v", e.Data())
 		default:
 			a.handle(event)
@@ -183,7 +187,7 @@ func (a *app) renderPrompt(width, y int) {
 	p := a.prompt
 	labelWidth := min(uniseg.StringWidth(p.label), max(0, width/2))
 	x := drawText(a.screen, 0, y, labelWidth, p.label, baseStyle.Bold(true))
-	if p.kind == "exit" || p.kind == "confirm" {
+	if p.choice() {
 		drawText(a.screen, x, y, width, p.value, baseStyle)
 		a.screen.HideCursor()
 		return
@@ -202,6 +206,10 @@ func (a *app) beginPrompt(kind, label, value string) {
 
 func (a *app) handle(event tcell.Event) {
 	switch e := event.(type) {
+	case *tcell.EventInterrupt:
+		if _, ok := e.Data().(filePoll); ok {
+			a.checkExternalChange()
+		}
 	case *tcell.EventResize:
 		a.screen.Sync()
 	case *tcell.EventPaste:
@@ -213,7 +221,7 @@ func (a *app) handle(event tcell.Event) {
 			a.pasting = false
 			text := a.paste.String()
 			a.paste.Reset()
-			if a.prompt != nil && a.prompt.kind != "exit" && a.prompt.kind != "confirm" {
+			if a.prompt != nil && !a.prompt.choice() {
 				// Prompts are single-line; pasted line breaks become spaces.
 				a.promptInsert(strings.Map(func(r rune) rune {
 					if r == '\n' || r == '\r' {
@@ -399,6 +407,18 @@ func (a *app) promptKey(e *tcell.EventKey) {
 		a.message = "Cancelled"
 		return
 	}
+	if p.kind == "external" {
+		if e.Key() == tcell.KeyRune {
+			switch unicode.ToLower(e.Rune()) {
+			case 's':
+				a.beginPrompt("external-save", "Save as: ", "")
+			case 'r':
+				a.prompt = nil
+				a.reloadFromDisk()
+			}
+		}
+		return
+	}
 	if p.kind == "exit" {
 		if e.Key() == tcell.KeyRune {
 			switch unicode.ToLower(e.Rune()) {
@@ -448,17 +468,25 @@ func (a *app) promptKey(e *tcell.EventKey) {
 func (a *app) acceptPrompt(p prompt) {
 	a.prompt = nil
 	switch p.kind {
-	case "save":
+	case "save", "external-save":
 		if p.value == "" {
 			a.message = "Save path cannot be empty"
 			a.quitAfterSave = false
 			return
 		}
-		if err := a.file.save(p.value, a.doc, a.options); err != nil {
+		if p.kind == "external-save" {
+			path, err := filepath.Abs(p.value)
+			if err != nil || path == a.file.path {
+				a.message = "Choose a new Save As destination; buffer retained"
+				return
+			}
+		}
+		if err := a.file.save(p.value, a.doc); err != nil {
 			a.message = err.Error()
 			a.quitAfterSave = false
 			return
 		}
+		a.ignoredChange = nil
 		a.message = "Saved " + a.file.path
 		if a.quitAfterSave {
 			a.quit = true
@@ -562,4 +590,6 @@ Search is case-sensitive and wraps through the source.
 Replace offers yes, no, all, or cancel; All is undoable.
 Checkboxes are display-only: edit [ ] / [x] by typing.
 Save As requires a new destination; existing files are preserved.
+External edits reload automatically when there are no unsaved changes.
+Otherwise choose Save As, reload/discard, or Esc to keep editing.
 Press any key to return to editing.`

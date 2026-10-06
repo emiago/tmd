@@ -6,6 +6,10 @@
 <p align="center">A small terminal editor with nano-style controls and Markdown right where you type.</p>
 <p align="center"><a href="#quick-start">Quick start</a> · <a href="#keys">Keys</a> · <a href="#how-it-feels">How it feels</a> · <a href="#development">Development</a></p>
 
+<p align="center">
+  <img src="assets/demo.gif" width="840" alt="Nine-second demo showing Markdown source appearing on the active line, editing a task, and scrolling down and back up through the document">
+</p>
+
 ## Quick start
 
 From this checkout, with Go 1.22 or newer:
@@ -46,6 +50,9 @@ Read headings, **bold**, *italic*, inline code, lists, and task checkboxes as
 Markdown. Move onto a line and its source appears, ready for ordinary text
 editing. Leave the line and it renders again. Your document stays Markdown
 throughout; there is no conversion step.
+
+Level-one headings use bold, bright yellow text. Levels two and three use bold
+gold text, and levels four through six use gold text without added emphasis.
 
 ```text
 tmd  notes.md *                                      4:12
@@ -108,9 +115,12 @@ checkout or background service is required.
 
 Existing line endings, final-newline state, untouched Markdown source, and file
 permissions are preserved. New files use permission mode `0600`. Saves stage a
-temporary file beside the destination before installing it atomically. If the
-file has changed on disk, tmd retains your buffer and asks you to use Save As
-with a new destination. Save As never overwrites another existing file.
+temporary file beside the destination before installing it atomically.
+External edits reload automatically when you have no unsaved changes.
+Otherwise, tmd retains your buffer and offers Save As, reload and discard your
+edits, or cancel to keep editing. Saving over a file that changed on disk is
+blocked; use Save As with a new destination. Save As never overwrites another
+existing file.
 
 Fenced code hides its fences and language label; the contents stay literal and
 use a uniform code style. Fence lines remain as blank rows in the editor so you
@@ -119,10 +129,6 @@ as tables, HTML, images,
 and link destinations remain visible as source rather than becoming a full
 document preview. Files must be regular UTF-8 text; directories, symlinks, and
 binary data are rejected.
-
-For `QUEUE.md`, tmd also honors Microspec's `.microspec-queue.lock` while
-saving, so it can coexist with queue writers without importing Microspec or
-requiring its installation.
 
 ## Development
 

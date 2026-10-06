@@ -20,6 +20,7 @@ const (
 	code
 	heading
 	codeBlock
+	heading1
 )
 
 type replacement struct {
@@ -160,10 +161,17 @@ func project(source string) *projection {
 				}
 			}
 		case *ast.Heading:
+			f := heading
+			switch node.Level {
+			case 1:
+				f |= bold | heading1
+			case 2, 3:
+				f |= bold
+			}
 			for i := 0; i < node.Lines().Len(); i++ {
 				seg := node.Lines().At(i)
 				line := p.lines[lineAt(p.lines, seg.Start)]
-				style(line.start, line.end, bold|heading)
+				style(line.start, line.end, f)
 				prefix := source[line.start:seg.Start]
 				if strings.HasPrefix(strings.TrimLeft(prefix, " \t"), "#") {
 					hide(line.start, seg.Start)

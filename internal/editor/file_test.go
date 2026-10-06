@@ -1,7 +1,6 @@
 package editor
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,7 +35,7 @@ func TestSavePreservesPermissionsAndBytes(t *testing.T) {
 	}
 	d.cursor = strings.Index(d.text, "work") + 4
 	d.insert(" today")
-	if err := f.save(path, d, saveOptions{}); err != nil {
+	if err := f.save(path, d); err != nil {
 		t.Fatal(err)
 	}
 	assertFile(t, path, strings.Replace(original, "work", "work today", 1))
@@ -48,7 +47,7 @@ func TestSavePreservesPermissionsAndBytes(t *testing.T) {
 		t.Fatal("successful save left document dirty")
 	}
 	d.insert("!")
-	if err := f.save(path, d, saveOptions{}); err != nil {
+	if err := f.save(path, d); err != nil {
 		t.Fatalf("second save: %v", err)
 	}
 	entries, _ := os.ReadDir(filepath.Dir(path))
@@ -79,7 +78,7 @@ func TestSaveConflictsKeepBufferAndAllowSaveAs(t *testing.T) {
 			} else {
 				writeTestFile(t, path, latest)
 			}
-			if err := f.save(path, d, saveOptions{}); err == nil || !strings.Contains(err.Error(), "changed on disk") {
+			if err := f.save(path, d); err == nil || !strings.Contains(err.Error(), "changed on disk") {
 				t.Fatalf("expected conflict: %v", err)
 			}
 			assertFile(t, path, latest)
@@ -87,7 +86,7 @@ func TestSaveConflictsKeepBufferAndAllowSaveAs(t *testing.T) {
 				t.Fatal("conflict lost editor changes")
 			}
 			copy := filepath.Join(dir, "copy.md")
-			if err := f.save(copy, d, saveOptions{}); err != nil {
+			if err := f.save(copy, d); err != nil {
 				t.Fatal(err)
 			}
 			assertFile(t, copy, "my edits original")
@@ -110,18 +109,18 @@ func TestMissingFilesAndSaveFailures(t *testing.T) {
 	}
 	d.insert("hello")
 	writeTestFile(t, path, "created externally")
-	if err := f.save(path, d, saveOptions{}); err == nil {
+	if err := f.save(path, d); err == nil {
 		t.Fatal("overwrote unexpected creation")
 	}
 	assertFile(t, path, "created externally")
-	if err := f.save(filepath.Join(dir, "missing", "copy.md"), d, saveOptions{}); err == nil {
+	if err := f.save(filepath.Join(dir, "missing", "copy.md"), d); err == nil {
 		t.Fatal("expected missing-directory error")
 	}
 	if d.text != "hello" {
 		t.Fatal("write failure lost buffer")
 	}
 	copy := filepath.Join(dir, "copy.MD")
-	if err := f.save(copy, d, saveOptions{}); err != nil {
+	if err := f.save(copy, d); err != nil {
 		t.Fatal(err)
 	}
 	assertFile(t, copy, "hello")
@@ -129,57 +128,29 @@ func TestMissingFilesAndSaveFailures(t *testing.T) {
 	if info.Mode().Perm() != 0600 {
 		t.Fatalf("new file mode: %o", info.Mode().Perm())
 	}
-	if err := f.save(path, d, saveOptions{}); err == nil {
+	if err := f.save(path, d); err == nil {
 		t.Fatal("Save As overwrote existing destination")
 	}
 }
 
-func TestQueueSaveUsesLockAndChecksAfterAcquisition(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "QUEUE.md")
-	writeTestFile(t, path, "- [ ] original\n")
+func TestSaveRejectsExternalPermissionChange(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "notes.md")
+	writeTestFile(t, path, "original")
 	f, d, err := openFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	d.insert("# Notes\n")
-	if err := f.save(path, d, saveOptions{}); err == nil {
-		t.Fatal("queue save without shared lock")
-	}
-	locked, unlocked := false, false
-	options := saveOptions{QueueLock: func(got string) (func(), error) {
-		if got != path {
-			t.Fatalf("lock path: %q", got)
-		}
-		locked = true
-		writeTestFile(t, path, "- [x] external completion\n")
-		return func() { unlocked = true }, nil
-	}}
-	if err := f.save(path, d, options); err == nil {
-		t.Fatal("queue snapshot overwrote concurrent completion")
-	}
-	if !locked || !unlocked {
-		t.Fatal("queue lock lifecycle was not respected")
-	}
-	assertFile(t, path, "- [x] external completion\n")
-	options.QueueLock = func(string) (func(), error) { return nil, errors.New("queue locked") }
-	if err := f.save(path, d, options); err == nil || err.Error() != "queue locked" {
-		t.Fatalf("lock error: %v", err)
-	}
-	// A fresh snapshot can save while holding the lock and releases it afterwards.
-	f, d, err = openFile(path)
-	if err != nil {
+	d.insert("mine ")
+	if err := os.Chmod(path, 0600); err != nil {
 		t.Fatal(err)
 	}
-	d.insert("# Notes\n")
-	locked, unlocked = false, false
-	options.QueueLock = func(string) (func(), error) { locked = true; return func() { unlocked = true }, nil }
-	if err := f.save(path, d, options); err != nil {
-		t.Fatal(err)
+	if err := f.save(path, d); err == nil || !strings.Contains(err.Error(), "changed on disk") {
+		t.Fatalf("expected permission conflict: %v", err)
 	}
-	if !locked || !unlocked {
-		t.Fatal("successful queue save skipped the lock")
+	assertFile(t, path, "original")
+	if d.text != "mine original" {
+		t.Fatal("save conflict lost local edits")
 	}
-	assertFile(t, path, "# Notes\n- [x] external completion\n")
 }
 
 func TestRejectedFileTypes(t *testing.T) {
@@ -209,7 +180,7 @@ func TestRejectedFileTypes(t *testing.T) {
 	}
 	f, d, _ := openFile(target)
 	d.insert("new ")
-	if err := f.save(link, d, saveOptions{}); err == nil {
+	if err := f.save(link, d); err == nil {
 		t.Fatal("saved over symlink")
 	}
 	assertFile(t, target, "target")

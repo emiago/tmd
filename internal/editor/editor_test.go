@@ -23,7 +23,7 @@ func testApp(t *testing.T, source string, width, height int) (*app, tcell.Simula
 	}
 	t.Cleanup(screen.Fini)
 	screen.SetSize(width, height)
-	a := newApp(screen, f, d, saveOptions{})
+	a := newApp(screen, f, d)
 	a.render()
 	return a, screen
 }

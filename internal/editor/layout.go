@@ -158,6 +158,9 @@ func cellStyle(f format) tcell.Style {
 	}
 	if f&heading != 0 {
 		s = s.Foreground(tcell.NewHexColor(0xe5c07b))
+		if f&heading1 != 0 {
+			s = s.Foreground(tcell.NewHexColor(0xffdf5d))
+		}
 	}
 	if f&codeBlock != 0 {
 		s = s.Background(codeBackground)

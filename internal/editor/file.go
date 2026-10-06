@@ -10,11 +10,6 @@ import (
 	"unicode/utf8"
 )
 
-// saveOptions lets persistence tests inject the interoperable queue-write lock.
-type saveOptions struct {
-	QueueLock func(path string) (unlock func(), err error)
-}
-
 type fileState struct {
 	path string
 	data []byte
@@ -73,7 +68,7 @@ func openFile(path string) (*fileState, *document, error) {
 
 func (f *fileState) modified(d *document) bool { return d.text != string(f.data) }
 
-func (f *fileState) save(path string, d *document, options saveOptions) error {
+func (f *fileState) save(path string, d *document) error {
 	if !utf8.ValidString(d.text) || strings.IndexByte(d.text, 0) >= 0 {
 		return errors.New("buffer must contain UTF-8 text without binary data")
 	}
@@ -83,16 +78,6 @@ func (f *fileState) save(path string, d *document, options saveOptions) error {
 	path, err := filepath.Abs(path)
 	if err != nil {
 		return err
-	}
-	if strings.EqualFold(filepath.Base(path), "QUEUE.md") {
-		if options.QueueLock == nil {
-			return errors.New("queue save requires the shared queue-write lock")
-		}
-		unlock, err := options.QueueLock(path)
-		if err != nil {
-			return err
-		}
-		defer unlock()
 	}
 
 	var expected *fileState
