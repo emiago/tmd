@@ -82,9 +82,18 @@ func Run(path string) error {
 	}()
 	go pollFileEvents(screen, done)
 	a := newApp(screen, f, d)
+	return a.run()
+}
+
+func (a *app) run() error {
 	for !a.quit {
-		a.render()
-		event := screen.PollEvent()
+		// A bracketed paste arrives as individual key events, but neither the
+		// document nor the prompt changes until its end marker. Drain those
+		// events without rebuilding the layout or redrawing an unchanged screen.
+		if !a.pasting {
+			a.render()
+		}
+		event := a.screen.PollEvent()
 		if event == nil {
 			return errors.New("terminal event stream closed")
 		}
@@ -193,11 +202,16 @@ func (a *app) renderPrompt(width, y int) {
 		return
 	}
 	start := 0
-	for start < p.cursor && x+uniseg.StringWidth(p.value[start:p.cursor]) >= width {
-		start = next(p.value, start)
+	valueWidth := uniseg.StringWidth(p.value[:p.cursor])
+	g := uniseg.NewGraphemes(p.value[:p.cursor])
+	// Find the visible suffix in one pass. Measuring every shrinking suffix
+	// makes a long pasted search string take quadratic time to display.
+	for x+valueWidth >= width && g.Next() {
+		_, start = g.Positions()
+		valueWidth -= g.Width()
 	}
 	drawText(a.screen, x, y, width, p.value[start:], baseStyle)
-	a.screen.ShowCursor(min(width-1, x+uniseg.StringWidth(p.value[start:p.cursor])), y)
+	a.screen.ShowCursor(min(width-1, x+valueWidth), y)
 }
 
 func (a *app) beginPrompt(kind, label, value string) {

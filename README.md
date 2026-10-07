@@ -103,8 +103,10 @@ Weekend plans
 Line cut/copy includes the line break when present and uses an internal clipboard.
 Cut, delete, and paste can each be undone with Ctrl+U. Wrapped lines are treated
 as one source line. For system clipboard copy/paste, use your terminal's usual
-shortcuts. Bracketed multiline paste is
-one undoable edit, and pasted control characters do not trigger editor commands.
+shortcuts. With a terminal that supports bracketed paste, tmd buffers the incoming
+text and inserts it as one undoable edit when the paste ends, then redraws the
+screen. Pasted control characters do not trigger editor commands. In text prompts,
+line breaks become spaces and other control characters are removed.
 Checkboxes are visual indicators: edit `[ ]` or `[x]` on the active line.
 
 ## Your file stays yours
