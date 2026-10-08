@@ -143,7 +143,7 @@ func TestCursorAroundExpandedTabs(t *testing.T) {
 }
 
 func FuzzMarkdownLayout(f *testing.F) {
-	for _, s := range []string{"# Heading\n- [ ] **bold**\n", "#\r\n", "👩‍💻\ttext", "**nested *word***", "```bash\n\techo **literal**\n```", "~~~\r\n~~~"} {
+	for _, s := range []string{"# Heading\n- [ ] **bold**\n", "#\r\n", "👩‍💻\ttext", "**nested *word***", "```bash\n\techo **literal**\n```", "~~~\r\n~~~", "| A | B |\n| :--- | ---: |\n| **界** | `a\\|b` |", "|\n|-|\n|", "> A | B\n> --- | ---\n> |"} {
 		f.Add(s, uint8(20))
 	}
 	f.Fuzz(func(t *testing.T, s string, w uint8) {

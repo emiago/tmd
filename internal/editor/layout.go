@@ -69,31 +69,40 @@ func makeLayout(d *document, p *projection, width int) layout {
 			x += w
 			row.points = append(row.points, point{x, end})
 		}
-		for pos := line.start; pos < line.end; {
-			if index != active {
-				if r, ok := p.replacements[pos]; ok {
-					add(pos, r.end, r.text, p.formats[pos])
-					pos = r.end
-					continue
-				}
-				if p.hidden[pos] {
-					pos++
-					continue
+		if cells, ok := p.tableLines[index]; ok && index != active {
+			for _, cell := range cells {
+				g := uniseg.NewGraphemes(cell.text)
+				for g.Next() {
+					add(cell.start, cell.end, g.Str(), cell.format)
 				}
 			}
-			end := min(next(d.text, pos), line.end)
-			cluster := d.text[pos:end]
-			if cluster == "\t" {
-				// Tabs use four-cell stops; represent each cell independently so
-				// even a one-column terminal can wrap safely.
-				spaces := 4 - x%4
-				for i := 0; i < spaces; i++ {
-					add(pos, end, " ", p.formats[pos])
+		} else {
+			for pos := line.start; pos < line.end; {
+				if index != active {
+					if r, ok := p.replacements[pos]; ok {
+						add(pos, r.end, r.text, p.formats[pos])
+						pos = r.end
+						continue
+					}
+					if p.hidden[pos] {
+						pos++
+						continue
+					}
 				}
-			} else {
-				add(pos, end, cluster, p.formats[pos])
+				end := min(next(d.text, pos), line.end)
+				cluster := d.text[pos:end]
+				if cluster == "\t" {
+					// Tabs use four-cell stops; represent each cell independently so
+					// even a one-column terminal can wrap safely.
+					spaces := 4 - x%4
+					for i := 0; i < spaces; i++ {
+						add(pos, end, " ", p.formats[pos])
+					}
+				} else {
+					add(pos, end, cluster, p.formats[pos])
+				}
+				pos = end
 			}
-			pos = end
 		}
 		// An insertion point after a completely full line needs its own row.
 		if x >= width && index == active && d.cursor == line.end {

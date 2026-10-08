@@ -14,14 +14,13 @@ func Render(out io.Writer, source string, styled bool) error {
 		return errors.New("input must contain UTF-8 text without binary data")
 	}
 	p := project(source)
+	tableStarts := make(map[int]int, len(p.tableLines))
+	for index := range p.tableLines {
+		tableStarts[p.lines[index].start] = index
+	}
 	var result strings.Builder
 	var current format
-	for pos := 0; pos < len(source); {
-		if p.hidden[pos] {
-			pos++
-			continue
-		}
-		f := p.formats[pos]
+	write := func(value string, f format) {
 		if styled && f != current {
 			if current != 0 {
 				result.WriteString("\x1b[0m")
@@ -51,16 +50,31 @@ func Render(out io.Writer, source string, styled bool) error {
 			}
 			current = f
 		}
+		result.WriteString(value)
+	}
+	for pos := 0; pos < len(source); {
+		if lineIndex, ok := tableStarts[pos]; ok {
+			for _, cell := range p.tableLines[lineIndex] {
+				write(cell.text, cell.format)
+			}
+			pos = p.lines[lineIndex].end
+			continue
+		}
+		if p.hidden[pos] {
+			pos++
+			continue
+		}
+		f := p.formats[pos]
 		if r, ok := p.replacements[pos]; ok {
-			result.WriteString(r.text)
+			write(r.text, f)
 			pos = r.end
 			continue
 		}
 		r, size := utf8.DecodeRuneInString(source[pos:])
 		if r == '\n' || r == '\t' || (r == '\r' && pos+size < len(source) && source[pos+size] == '\n') {
-			result.WriteRune(r)
+			write(string(r), f)
 		} else {
-			result.WriteString(safeText(source[pos : pos+size]))
+			write(safeText(source[pos:pos+size]), f)
 		}
 		pos += size
 	}

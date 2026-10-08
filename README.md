@@ -46,7 +46,7 @@ the build. Run it without arguments to show help.
 
 ## How it feels
 
-Read headings, **bold**, *italic*, inline code, lists, and task checkboxes as
+Read headings, **bold**, *italic*, inline code, lists, task checkboxes, and tables as
 Markdown. Move onto a line and its source appears, ready for ordinary text
 editing. Leave the line and it renders again. Your document stays Markdown
 throughout; there is no conversion step.
@@ -124,10 +124,14 @@ edits, or cancel to keep editing. Saving over a file that changed on disk is
 blocked; use Save As with a new destination. Save As never overwrites another
 existing file.
 
+Pipe tables render with aligned columns, bold headers, and inline formatting.
+Use colons in the delimiter row for left, center, or right alignment. The active
+row reveals its original Markdown, including the delimiter row, for editing.
+
 Fenced code hides its fences and language label; the contents stay literal and
 use a uniform code style. Fence lines remain as blank rows in the editor so you
 can move onto them to reveal and edit the source. Other Markdown features such
-as tables, HTML, images,
+as HTML, images,
 and link destinations remain visible as source rather than becoming a full
 document preview. Files must be regular UTF-8 text; directories, symlinks, and
 binary data are rejected.

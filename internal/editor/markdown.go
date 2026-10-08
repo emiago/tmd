@@ -7,6 +7,7 @@ import (
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
+	extast "github.com/yuin/goldmark/extension/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
 	"github.com/yuin/goldmark/util"
@@ -33,6 +34,7 @@ type projection struct {
 	replacements map[int]replacement
 	lines        []sourceLine
 	codeLines    map[int]bool
+	tableLines   map[int][]projectedCell
 }
 
 // Goldmark's fenced nodes retain content spans but not the fences themselves.
@@ -61,6 +63,10 @@ var markdown = goldmark.New(
 	goldmark.WithExtensions(extension.TaskList),
 	goldmark.WithParserOptions(parser.WithBlockParsers(
 		util.Prioritized(fencedParser{parser.NewFencedCodeBlockParser()}, 699),
+	), parser.WithParagraphTransformers(
+		util.Prioritized(tableParser{extension.NewTableParagraphTransformer()}, 200),
+	), parser.WithASTTransformers(
+		util.Prioritized(extension.NewTableASTTransformer(), 0),
 	)),
 )
 
@@ -68,7 +74,7 @@ var markdown = goldmark.New(
 // reconstruct Markdown. Code contents and unsupported syntax stay literal.
 func project(source string) *projection {
 	data := []byte(source)
-	p := &projection{hidden: make([]bool, len(data)), formats: make([]format, len(data)), replacements: make(map[int]replacement), lines: sourceLines(source), codeLines: make(map[int]bool)}
+	p := &projection{hidden: make([]bool, len(data)), formats: make([]format, len(data)), replacements: make(map[int]replacement), lines: sourceLines(source), codeLines: make(map[int]bool), tableLines: make(map[int][]projectedCell)}
 	hide := func(a, b int) {
 		for i := max(0, a); i < min(len(data), b); i++ {
 			p.hidden[i] = true
@@ -118,6 +124,8 @@ func project(source string) *projection {
 			}
 		}
 		switch node := n.(type) {
+		case *extast.Table:
+			p.projectTable(source, node)
 		case *ast.Emphasis:
 			if a >= 0 {
 				f := italic
