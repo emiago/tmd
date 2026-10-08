@@ -127,6 +127,15 @@ existing file.
 Pipe tables render with aligned columns, bold headers, and inline formatting.
 Use colons in the delimiter row for left, center, or right alignment. The active
 row reveals its original Markdown, including the delimiter row, for editing.
+In the editor, wide tables fit the current terminal width by wrapping text within
+cells, and adjust automatically when you resize the terminal. Very narrow
+terminals show wrapped Markdown source instead. Printed `--render` output keeps
+natural column widths.
+
+While you hold Up/Down or Page Up/Page Down over a table, its layout stays fixed
+and only the cursor moves (or the viewport scrolls). The current row reveals its
+Markdown source after a short pause in key repeat; typing resumes editing
+immediately.
 
 Fenced code hides its fences and language label; the contents stay literal and
 use a uniform code style. Fence lines remain as blank rows in the editor so you

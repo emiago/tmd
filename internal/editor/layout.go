@@ -31,6 +31,17 @@ type layout struct {
 	cursorX, cursorRow int
 }
 
+// Fitting and grapheme layout depend on source and width, not cursor movement.
+// Keep both views of each line; changing the active line only assembles rows.
+type projectionLayout struct {
+	width               int
+	rendered, source    [][]displayRow
+	rows                []displayRow
+	active, activeStart int
+	activeCount         int
+	endRow              bool
+}
+
 func safeText(s string) string {
 	return strings.Map(func(r rune) rune {
 		if unicode.IsControl(r) {
@@ -43,115 +54,164 @@ func safeText(s string) string {
 func makeLayout(d *document, p *projection, width int) layout {
 	width = max(1, width)
 	active := lineAt(p.lines, d.cursor)
-	result := layout{}
-	for index, line := range p.lines {
-		row := displayRow{line: index, points: []point{{0, line.start}}}
-		x := 0
-		add := func(start, end int, text string, f format) {
-			if p.codeLines[index] {
-				f |= codeBlock
-			}
-			text = safeText(text)
-			w := uniseg.StringWidth(text)
-			if w == 0 {
-				text, w = "◌"+text, 1
-			}
-			if w > width {
-				text, w = "�", 1
-			}
-			if x+w > width {
-				result.rows = append(result.rows, row)
-				row = displayRow{line: index, points: []point{{0, start}}}
-				x = 0
-			}
-			row.points = append(row.points, point{x, start})
-			row.cells = append(row.cells, displayCell{x, text, start, end, f})
-			x += w
-			row.points = append(row.points, point{x, end})
+	cache := p.layoutCache
+	if cache == nil || cache.width != width {
+		cache = &projectionLayout{
+			width: width, active: -1,
+			rendered: make([][]displayRow, len(p.lines)),
+			source:   make([][]displayRow, len(p.lines)),
 		}
-		if cells, ok := p.tableLines[index]; ok && index != active {
-			for _, cell := range cells {
-				g := uniseg.NewGraphemes(cell.text)
-				for g.Next() {
-					add(cell.start, cell.end, g.Str(), cell.format)
-				}
-			}
-		} else {
-			for pos := line.start; pos < line.end; {
-				if index != active {
-					if r, ok := p.replacements[pos]; ok {
-						add(pos, r.end, r.text, p.formats[pos])
-						pos = r.end
-						continue
-					}
-					if p.hidden[pos] {
-						pos++
-						continue
-					}
-				}
-				end := min(next(d.text, pos), line.end)
-				cluster := d.text[pos:end]
-				if cluster == "\t" {
-					// Tabs use four-cell stops; represent each cell independently so
-					// even a one-column terminal can wrap safely.
-					spaces := 4 - x%4
-					for i := 0; i < spaces; i++ {
-						add(pos, end, " ", p.formats[pos])
-					}
-				} else {
-					add(pos, end, cluster, p.formats[pos])
-				}
-				pos = end
+		tableLines := p.fitTables(width)
+		for index := range p.lines {
+			tableRows, tableLine := tableLines[index]
+			exposeSource := tableLine && tableRows == nil
+			cache.rendered[index] = layoutLine(d.text, p, index, width, tableRows, tableLine, exposeSource)
+			if exposeSource {
+				cache.source[index] = cache.rendered[index]
 			}
 		}
-		// An insertion point after a completely full line needs its own row.
-		if x >= width && index == active && d.cursor == line.end {
-			result.rows = append(result.rows, row)
-			row = displayRow{line: index, points: []point{{0, line.end}}}
-			x = 0
-		}
-		row.points = append(row.points, point{x, line.end})
-		result.rows = append(result.rows, row)
+		p.layoutCache = cache
 	}
-	// A token's first cell owns its starting insertion point. In particular,
-	// repeated cells of an expanded tab must not move the cursor into the tab.
-	for r, row := range result.rows {
-		if row.line != active {
-			continue
+	if cache.source[active] == nil {
+		cache.source[active] = layoutLine(d.text, p, active, width, nil, false, true)
+	}
+	activeRows := cache.source[active]
+	last := activeRows[len(activeRows)-1]
+	x := last.points[len(last.points)-1].x
+	endRow := x >= width && d.cursor == p.lines[active].end
+	if cache.active != active || cache.endRow != endRow {
+		rows := make([]displayRow, 0, len(cache.rows))
+		for index, rendered := range cache.rendered {
+			if index == active {
+				cache.activeStart = len(rows)
+				rows = append(rows, activeRows...)
+				if endRow {
+					rows = append(rows, displayRow{line: index, points: []point{{0, d.cursor}}})
+				}
+				cache.activeCount = len(rows) - cache.activeStart
+			} else {
+				rows = append(rows, rendered...)
+			}
 		}
+		cache.rows, cache.active, cache.endRow = rows, active, endRow
+	}
+	result := layout{rows: cache.rows}
+	// Search only the active source line, including its optional end row.
+	rows := result.rows[cache.activeStart : cache.activeStart+cache.activeCount]
+	for r, row := range rows {
 		for _, cell := range row.cells {
 			if cell.start == d.cursor {
-				result.cursorX, result.cursorRow = cell.x, r
+				result.cursorX, result.cursorRow = cell.x, cache.activeStart+r
 				return result
 			}
 		}
 	}
-	// For end-of-line insertion points, later rows win at a wrapping boundary.
-	for r, row := range result.rows {
-		if row.line != active {
-			continue
-		}
+	for r, row := range rows {
 		for _, pt := range row.points {
 			if pt.pos == d.cursor && pt.x < width {
-				result.cursorX, result.cursorRow = pt.x, r
+				result.cursorX, result.cursorRow = pt.x, cache.activeStart+r
 			}
 		}
 	}
 	return result
 }
 
+func layoutLine(source string, p *projection, index, width int, tableRows [][]projectedCell, tableLine, exposeSource bool) []displayRow {
+	var rows []displayRow
+	line := p.lines[index]
+	row := displayRow{line: index, points: []point{{0, line.start}}}
+	x := 0
+	add := func(start, end int, text string, f format) {
+		if p.codeLines[index] {
+			f |= codeBlock
+		}
+		text = safeText(text)
+		w := uniseg.StringWidth(text)
+		if w == 0 {
+			text, w = "◌"+text, 1
+		}
+		if w > width {
+			text, w = "�", 1
+		}
+		if x+w > width {
+			rows = append(rows, row)
+			row = displayRow{line: index, points: []point{{0, start}}}
+			x = 0
+		}
+		row.points = append(row.points, point{x, start})
+		row.cells = append(row.cells, displayCell{x, text, start, end, f})
+		x += w
+		row.points = append(row.points, point{x, end})
+	}
+	if tableLine && !exposeSource {
+		for n, cells := range tableRows {
+			if n > 0 {
+				rows = append(rows, row)
+				row = displayRow{line: index}
+				x = 0
+			}
+			for _, cell := range cells {
+				g := uniseg.NewGraphemes(cell.text)
+				for g.Next() {
+					add(cell.start, cell.end, g.Str(), cell.format)
+				}
+			}
+		}
+	} else {
+		for pos := line.start; pos < line.end; {
+			if !exposeSource {
+				if r, ok := p.replacements[pos]; ok {
+					add(pos, r.end, r.text, p.formats[pos])
+					pos = r.end
+					continue
+				}
+				if p.hidden[pos] {
+					pos++
+					continue
+				}
+			}
+			end := min(next(source, pos), line.end)
+			cluster := source[pos:end]
+			if cluster == "\t" {
+				// Tabs use four-cell stops; represent each cell independently so
+				// even a one-column terminal can wrap safely.
+				spaces := 4 - x%4
+				for i := 0; i < spaces; i++ {
+					add(pos, end, " ", p.formats[pos])
+				}
+			} else {
+				add(pos, end, cluster, p.formats[pos])
+			}
+			pos = end
+		}
+	}
+	row.points = append(row.points, point{x, line.end})
+	return append(rows, row)
+}
+
 func nearest(row displayRow, x int) int {
-	pos, best := row.points[0].pos, int(^uint(0)>>1)
+	return nearestPoint(row, x).pos
+}
+
+func nearestPoint(row displayRow, x int) point {
+	pt, best := row.points[0], int(^uint(0)>>1)
 	for _, p := range row.points {
 		distance := p.x - x
 		if distance < 0 {
 			distance = -distance
 		}
 		if distance < best {
-			pos, best = p.pos, distance
+			pt, best = p, distance
 		}
 	}
-	return pos
+	return pt
+}
+
+func abs(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
 }
 
 func cellStyle(f format) tcell.Style {

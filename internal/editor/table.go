@@ -2,6 +2,7 @@ package editor
 
 import (
 	"strings"
+	"unicode"
 
 	"github.com/rivo/uniseg"
 	"github.com/yuin/goldmark/ast"
@@ -42,6 +43,21 @@ type projectedCell struct {
 	format     format
 }
 
+type projectedTableRow struct {
+	line    int
+	prefix  string
+	cells   [][]projectedCell
+	anchors []int
+}
+
+type projectedTable struct {
+	rows       []projectedTableRow
+	delimiter  projectedTableRow
+	widths     []int
+	minimums   []int
+	alignments []extast.Alignment
+}
+
 func (p *projection) tableCell(source string, cell *extast.TableCell, header bool) ([]projectedCell, int) {
 	var cells []projectedCell
 	width := 0
@@ -71,7 +87,14 @@ func (p *projection) tableCell(source string, cell *extast.TableCell, header boo
 		if header {
 			f |= bold
 		}
-		cells = append(cells, projectedCell{value, pos, end, f})
+		// Expand tabs into individual cells so narrow columns can wrap them.
+		if source[pos:end] == "\t" {
+			for j := 0; j < w; j++ {
+				cells = append(cells, projectedCell{" ", pos, end, f})
+			}
+		} else {
+			cells = append(cells, projectedCell{value, pos, end, f})
+		}
 		width += w
 		pos = end
 	}
@@ -85,22 +108,19 @@ func (p *projection) projectTable(source string, table *extast.Table) {
 	}
 	segments := value.([]text.Segment)
 	columns := len(table.Alignments)
-	widths := make([]int, columns)
-	type row struct {
-		segment text.Segment
-		cells   [][]projectedCell
-		widths  []int
-		anchors []int
+	t := &projectedTable{
+		widths: make([]int, columns), minimums: make([]int, columns),
+		alignments: table.Alignments,
 	}
-	var rows []row
 	i := 0
 	for node := table.FirstChild(); node != nil; node = node.NextSibling() {
 		if i == 1 {
 			i++ // The delimiter is not an AST row.
 		}
 		seg := segments[i]
-		r := row{seg, make([][]projectedCell, columns), make([]int, columns), make([]int, columns)}
-		line := p.lines[lineAt(p.lines, seg.Start)]
+		lineIndex := lineAt(p.lines, seg.Start)
+		line := p.lines[lineIndex]
+		r := projectedTableRow{lineIndex, source[line.start:seg.Start], make([][]projectedCell, columns), make([]int, columns)}
 		column := 0
 		for n := node.FirstChild(); n != nil; n = n.NextSibling() {
 			cell := n.(*extast.TableCell)
@@ -109,47 +129,33 @@ func (p *projection) projectTable(source string, table *extast.Table) {
 				anchor = cell.Lines().At(0).Start
 			}
 			r.anchors[column] = anchor
-			r.cells[column], r.widths[column] = p.tableCell(source, cell, i == 0)
-			widths[column] = max(widths[column], r.widths[column], 1)
+			var width int
+			r.cells[column], width = p.tableCell(source, cell, i == 0)
+			t.widths[column] = max(t.widths[column], width, 1)
+			t.minimums[column] = max(t.minimums[column], 1)
+			for _, c := range r.cells[column] {
+				t.minimums[column] = max(t.minimums[column], uniseg.StringWidth(c.text))
+			}
 			column++
 		}
-		rows = append(rows, r)
+		t.rows = append(t.rows, r)
 		i++
-	}
-	for _, r := range rows {
-		lineIndex := lineAt(p.lines, r.segment.Start)
-		line := p.lines[lineIndex]
-		var cells []projectedCell
-		add := func(value string, anchor int) {
-			cells = append(cells, projectedCell{value, anchor, anchor, 0})
-		}
-		// Preserve container markers and indentation outside the table.
-		add(source[line.start:r.segment.Start], line.start)
-		add("│", r.anchors[0])
-		for column, content := range r.cells {
-			padding := widths[column] - r.widths[column]
-			left := 0
-			switch table.Alignments[column] {
-			case extast.AlignRight:
-				left = padding
-			case extast.AlignCenter:
-				left = padding / 2
-			}
-			add(strings.Repeat(" ", left+1), r.anchors[column])
-			cells = append(cells, content...)
-			end := r.anchors[column]
-			if len(content) > 0 {
-				end = content[len(content)-1].end
-			}
-			add(strings.Repeat(" ", padding-left+1)+"│", end)
-		}
-		p.tableLines[lineIndex] = cells
 	}
 	seg := segments[1]
 	lineIndex := lineAt(p.lines, seg.Start)
 	line := p.lines[lineIndex]
+	t.delimiter = projectedTableRow{line: lineIndex, prefix: source[line.start:seg.Start], anchors: []int{seg.Start, line.end}}
+	p.tables = append(p.tables, t)
+	// Width-independent output keeps its natural column sizes.
+	for _, r := range t.rows {
+		p.tableLines[r.line] = t.renderRow(r, t.widths, r.prefix, r.prefix)[0]
+	}
+	p.tableLines[lineIndex] = t.renderRule(t.widths, t.delimiter.prefix)
+}
+
+func (t *projectedTable) renderRule(widths []int, prefix string) []projectedCell {
 	var rule strings.Builder
-	rule.WriteString(source[line.start:seg.Start])
+	rule.WriteString(prefix)
 	rule.WriteString("├")
 	for column, width := range widths {
 		if column > 0 {
@@ -158,5 +164,167 @@ func (p *projection) projectTable(source string, table *extast.Table) {
 		rule.WriteString(strings.Repeat("─", width+2))
 	}
 	rule.WriteString("┤")
-	p.tableLines[lineIndex] = []projectedCell{{rule.String(), seg.Start, line.end, 0}}
+	return []projectedCell{{rule.String(), t.delimiter.anchors[0], t.delimiter.anchors[1], 0}}
+}
+
+func (t *projectedTable) renderRow(r projectedTableRow, widths []int, prefix, continuation string) [][]projectedCell {
+	wrapped := make([][][]projectedCell, len(widths))
+	height := 1
+	for column, content := range r.cells {
+		wrapped[column] = wrapTableCell(content, widths[column])
+		height = max(height, len(wrapped[column]))
+	}
+	rows := make([][]projectedCell, height)
+	for n := range rows {
+		rowAnchor := r.anchors[0]
+		for _, parts := range wrapped {
+			if n < len(parts) && len(parts[n]) > 0 {
+				rowAnchor = parts[n][0].start
+				break
+			}
+		}
+		add := func(value string, anchor int) {
+			rows[n] = append(rows[n], projectedCell{value, anchor, anchor, 0})
+		}
+		if n == 0 {
+			add(prefix, rowAnchor)
+		} else {
+			add(continuation, rowAnchor)
+		}
+		add("│", rowAnchor)
+		for column, parts := range wrapped {
+			var content []projectedCell
+			anchor := r.anchors[column]
+			if n < len(parts) {
+				content = parts[n]
+				if len(content) > 0 {
+					anchor = content[0].start
+				}
+			} else if original := r.cells[column]; len(original) > 0 {
+				anchor = original[len(original)-1].end
+			}
+			padding := widths[column] - tableCellWidth(content)
+			left := 0
+			switch t.alignments[column] {
+			case extast.AlignRight:
+				left = padding
+			case extast.AlignCenter:
+				left = padding / 2
+			}
+			add(strings.Repeat(" ", left+1), anchor)
+			rows[n] = append(rows[n], content...)
+			end := anchor
+			if len(content) > 0 {
+				end = content[len(content)-1].end
+			}
+			add(strings.Repeat(" ", padding-left+1)+"│", end)
+		}
+	}
+	return rows
+}
+
+func tableCellWidth(cells []projectedCell) int {
+	width := 0
+	for _, cell := range cells {
+		width += uniseg.StringWidth(cell.text)
+	}
+	return width
+}
+
+func tableSpace(cell projectedCell) bool {
+	for _, r := range cell.text {
+		if !unicode.IsSpace(r) {
+			return false
+		}
+	}
+	return true
+}
+
+// Keep source spans and styles attached to every grapheme. Only whitespace at
+// a word-wrapping boundary is omitted from the display.
+func wrapTableCell(cells []projectedCell, width int) [][]projectedCell {
+	var rows [][]projectedCell
+	for start := 0; start < len(cells); {
+		end, used, space := start, 0, -1
+		for end < len(cells) && used+uniseg.StringWidth(cells[end].text) <= width {
+			if tableSpace(cells[end]) && end > start && !tableSpace(cells[end-1]) {
+				space = end
+			}
+			used += uniseg.StringWidth(cells[end].text)
+			end++
+		}
+		next := end
+		if end < len(cells) {
+			if !tableSpace(cells[end]) && space > start {
+				end, next = space, space
+			}
+			for next < len(cells) && tableSpace(cells[next]) {
+				next++
+			}
+		}
+		rows = append(rows, cells[start:end])
+		start = next
+	}
+	return rows
+}
+
+// A nil entry means the entire table must expose source: even its narrowest
+// columns, padding, and borders cannot fit in the available terminal width.
+func (p *projection) fitTables(width int) map[int][][]projectedCell {
+	lines := make(map[int][][]projectedCell, len(p.tableLines))
+	for _, t := range p.tables {
+		prefixWidth := uniseg.StringWidth(tablePrefix(t.delimiter.prefix))
+		for _, r := range t.rows {
+			prefixWidth = max(prefixWidth, uniseg.StringWidth(tablePrefix(r.prefix)))
+		}
+		budget := width - prefixWidth - 1 - 3*len(t.widths)
+		minimum, total := 0, 0
+		for i, w := range t.widths {
+			total += w
+			minimum += t.minimums[i]
+		}
+		widths := append([]int(nil), t.widths...)
+		if budget >= minimum {
+			for total > budget {
+				widest := -1
+				for i, w := range widths {
+					if w > t.minimums[i] && (widest < 0 || w > widths[widest]) {
+						widest = i
+					}
+				}
+				widths[widest]--
+				total--
+			}
+		}
+		for _, r := range t.rows {
+			lines[r.line] = nil
+			if budget >= minimum {
+				// The delimiter's container prefix has continuation indentation
+				// rather than the list marker that may open the header row.
+				lines[r.line] = t.renderRow(r, widths, tablePrefix(r.prefix), tablePrefix(t.delimiter.prefix))
+			}
+		}
+		lines[t.delimiter.line] = nil
+		if budget >= minimum {
+			lines[t.delimiter.line] = [][]projectedCell{t.renderRule(widths, tablePrefix(t.delimiter.prefix))}
+		}
+	}
+	return lines
+}
+
+func tablePrefix(prefix string) string {
+	var result strings.Builder
+	x := 0
+	g := uniseg.NewGraphemes(prefix)
+	for g.Next() {
+		value := g.Str()
+		if value == "\t" {
+			value = strings.Repeat(" ", 4-x%4)
+		} else {
+			value = safeText(value)
+		}
+		result.WriteString(value)
+		x += uniseg.StringWidth(value)
+	}
+	return result.String()
 }

@@ -35,6 +35,8 @@ type projection struct {
 	lines        []sourceLine
 	codeLines    map[int]bool
 	tableLines   map[int][]projectedCell
+	tables       []*projectedTable
+	layoutCache  *projectionLayout
 }
 
 // Goldmark's fenced nodes retain content spans but not the fences themselves.

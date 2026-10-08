@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 	"unicode"
 
 	"github.com/gdamore/tcell/v2"
@@ -41,7 +42,13 @@ type app struct {
 	paste                strings.Builder
 	clipboard            string
 	goalColumn           int
+	navigating           bool
+	navigationOrigin     *layout
 }
+
+const navigationIdleDelay = 100 * time.Millisecond
+
+type navigationIdle struct{}
 
 func newApp(screen tcell.Screen, f *fileState, d *document) *app {
 	screen.SetStyle(baseStyle)
@@ -86,16 +93,56 @@ func Run(path string) error {
 }
 
 func (a *app) run() error {
+	var idleTimer *time.Timer
+	var redrawAt time.Time
+	defer func() {
+		if idleTimer != nil {
+			idleTimer.Stop()
+		}
+		a.navigating = false
+		a.navigationOrigin = nil
+	}()
+	finishNavigation := func() {
+		a.navigating = false
+		a.navigationOrigin = nil
+		redrawAt = time.Time{}
+		if idleTimer != nil {
+			idleTimer.Stop()
+		}
+	}
 	for !a.quit {
 		// A bracketed paste arrives as individual key events, but neither the
 		// document nor the prompt changes until its end marker. Drain those
 		// events without rebuilding the layout or redrawing an unchanged screen.
-		if !a.pasting {
+		if !a.pasting && !a.navigating {
 			a.render()
 		}
 		event := a.screen.PollEvent()
 		if event == nil {
+			if a.navigating {
+				finishNavigation()
+				a.render()
+			}
 			return errors.New("terminal event stream closed")
+		}
+		if e, ok := event.(*tcell.EventInterrupt); ok {
+			if _, idle := e.Data().(navigationIdle); idle {
+				// A stopped timer can already have queued its wake-up event.
+				if a.navigating && !time.Now().Before(redrawAt) {
+					finishNavigation()
+				}
+				continue
+			}
+		}
+		deferRedraw := a.deferNavigation(event)
+		redrawTable := false
+		if deferRedraw {
+			if !a.navigating {
+				redrawTable = a.beginNavigation()
+			}
+		} else if _, poll := event.(*tcell.EventInterrupt); !poll {
+			// Editing, prompts, and resizing immediately leave the frozen view.
+			finishNavigation()
 		}
 		switch e := event.(type) {
 		case *tcell.EventError:
@@ -103,11 +150,29 @@ func (a *app) run() error {
 		case *tcell.EventInterrupt:
 			if _, ok := e.Data().(filePoll); ok {
 				a.handle(e)
+				if a.projection == nil || a.prompt != nil {
+					finishNavigation()
+				}
 				continue
 			}
 			return fmt.Errorf("editor interrupted by %v", e.Data())
 		default:
 			a.handle(event)
+		}
+		if deferRedraw {
+			if redrawTable {
+				a.render()
+			} else {
+				a.renderNavigationCursor()
+			}
+			redrawAt = time.Now().Add(navigationIdleDelay)
+			if idleTimer == nil {
+				idleTimer = time.AfterFunc(navigationIdleDelay, func() {
+					_ = a.screen.PostEvent(tcell.NewEventInterrupt(navigationIdle{}))
+				})
+			} else {
+				idleTimer.Reset(navigationIdleDelay)
+			}
 		}
 	}
 	return nil
@@ -123,7 +188,9 @@ func (a *app) refreshLayout() {
 }
 
 func (a *app) render() {
-	a.refreshLayout()
+	if !a.navigating {
+		a.refreshLayout()
+	}
 	w, h := a.screen.Size()
 	a.screen.Clear()
 	if w < 1 || h < 1 {
@@ -398,13 +465,35 @@ func (a *app) editLine(remove, copy bool) {
 }
 
 func (a *app) moveVertical(delta int) {
-	a.refreshLayout()
+	if !a.navigating {
+		a.refreshLayout()
+	}
 	if a.goalColumn < 0 {
 		a.goalColumn = a.layout.cursorX
+		if a.navigationOrigin != nil {
+			a.goalColumn = a.navigationOrigin.cursorX
+		}
+	}
+	if a.navigating && a.navigationOrigin != nil {
+		a.moveFromNavigationOrigin(delta)
+		return
 	}
 	row := max(0, min(len(a.layout.rows)-1, a.layout.cursorRow+delta))
-	a.doc.cursor = nearest(a.layout.rows[row], a.goalColumn)
-	a.doc.snapCursor()
+	if row == a.layout.cursorRow {
+		return
+	}
+	if a.navigating {
+		pt := nearestPoint(a.layout.rows[row], a.goalColumn)
+		a.doc.cursor = pt.pos
+		a.doc.snapCursor()
+		w, _ := a.screen.Size()
+		a.layout.cursorRow, a.layout.cursorX = row, min(max(0, w-1), pt.x)
+		return
+	}
+	if _, pt, ok := sourceVerticalTarget(a.layout, a.doc.cursor, a.goalColumn, delta); ok {
+		a.doc.cursor = pt.pos
+		a.doc.snapCursor()
+	}
 }
 
 func (a *app) promptInsert(text string) {
