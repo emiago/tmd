@@ -120,7 +120,7 @@ func (p *projection) projectTable(source string, table *extast.Table) {
 		seg := segments[i]
 		lineIndex := lineAt(p.lines, seg.Start)
 		line := p.lines[lineIndex]
-		r := projectedTableRow{lineIndex, source[line.start:seg.Start], make([][]projectedCell, columns), make([]int, columns)}
+		r := projectedTableRow{lineIndex, p.projectPrefix(source, line.start, seg.Start), make([][]projectedCell, columns), make([]int, columns)}
 		column := 0
 		for n := node.FirstChild(); n != nil; n = n.NextSibling() {
 			cell := n.(*extast.TableCell)
@@ -144,13 +144,27 @@ func (p *projection) projectTable(source string, table *extast.Table) {
 	seg := segments[1]
 	lineIndex := lineAt(p.lines, seg.Start)
 	line := p.lines[lineIndex]
-	t.delimiter = projectedTableRow{line: lineIndex, prefix: source[line.start:seg.Start], anchors: []int{seg.Start, line.end}}
+	t.delimiter = projectedTableRow{line: lineIndex, prefix: p.projectPrefix(source, line.start, seg.Start), anchors: []int{seg.Start, line.end}}
 	p.tables = append(p.tables, t)
 	// Width-independent output keeps its natural column sizes.
 	for _, r := range t.rows {
 		p.tableLines[r.line] = t.renderRow(r, t.widths, r.prefix, r.prefix)[0]
 	}
 	p.tableLines[lineIndex] = t.renderRule(t.widths, t.delimiter.prefix)
+}
+
+func (p *projection) projectPrefix(source string, start, end int) string {
+	var prefix strings.Builder
+	for pos := start; pos < end; {
+		if r, ok := p.replacements[pos]; ok && r.end <= end {
+			prefix.WriteString(r.text)
+			pos = r.end
+		} else {
+			prefix.WriteByte(source[pos])
+			pos++
+		}
+	}
+	return prefix.String()
 }
 
 func (t *projectedTable) renderRule(widths []int, prefix string) []projectedCell {

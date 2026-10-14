@@ -13,6 +13,7 @@ var baseStyle = tcell.StyleDefault.
 	Background(tcell.NewHexColor(0x202020))
 
 var codeBackground = tcell.NewHexColor(0x161616)
+var quoteBackground = tcell.NewHexColor(0x181c24)
 
 type displayCell struct {
 	x          int
@@ -122,9 +123,7 @@ func layoutLine(source string, p *projection, index, width int, tableRows [][]pr
 	row := displayRow{line: index, points: []point{{0, line.start}}}
 	x := 0
 	add := func(start, end int, text string, f format) {
-		if p.codeLines[index] {
-			f |= codeBlock
-		}
+		f |= p.lineFormat(index)
 		text = safeText(text)
 		w := uniseg.StringWidth(text)
 		if w == 0 {
@@ -160,13 +159,16 @@ func layoutLine(source string, p *projection, index, width int, tableRows [][]pr
 	} else {
 		for pos := line.start; pos < line.end; {
 			if !exposeSource {
-				if r, ok := p.replacements[pos]; ok {
-					add(pos, r.end, r.text, p.formats[pos])
-					pos = r.end
-					continue
-				}
 				if p.hidden[pos] {
 					pos++
+					continue
+				}
+				if r, ok := p.replacements[pos]; ok {
+					g := uniseg.NewGraphemes(r.text)
+					for g.Next() {
+						add(pos, r.end, g.Str(), p.formats[pos])
+					}
+					pos = r.end
 					continue
 				}
 			}
@@ -230,6 +232,9 @@ func cellStyle(f format) tcell.Style {
 		if f&heading1 != 0 {
 			s = s.Foreground(tcell.NewHexColor(0xffdf5d))
 		}
+	}
+	if f&blockquote != 0 {
+		s = s.Background(quoteBackground)
 	}
 	if f&codeBlock != 0 {
 		s = s.Background(codeBackground)

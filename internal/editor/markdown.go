@@ -22,6 +22,7 @@ const (
 	heading
 	codeBlock
 	heading1
+	blockquote
 )
 
 type replacement struct {
@@ -34,6 +35,7 @@ type projection struct {
 	replacements map[int]replacement
 	lines        []sourceLine
 	codeLines    map[int]bool
+	quoteLines   map[int]bool
 	tableLines   map[int][]projectedCell
 	tables       []*projectedTable
 	layoutCache  *projectionLayout
@@ -42,6 +44,46 @@ type projection struct {
 // Goldmark's fenced nodes retain content spans but not the fences themselves.
 // Record those offsets while parsing, including empty and unclosed blocks.
 type fencedParser struct{ parser.BlockParser }
+
+// Track the container's physical lines, including empty quoted lines and lazy
+// paragraph continuations that omit the > marker. The closing line is outside
+// the quote, even when another block starts there.
+type blockquoteParser struct{ parser.BlockParser }
+
+func (p blockquoteParser) Open(parent ast.Node, reader text.Reader, pc parser.Context) (ast.Node, parser.State) {
+	line, _ := reader.Position()
+	_, segment := reader.PeekLine()
+	node, state := p.BlockParser.Open(parent, reader, pc)
+	if node != nil {
+		node.SetAttributeString("quoteStart", line)
+		recordQuoteMarker(node, reader, segment)
+	}
+	return node, state
+}
+
+func (p blockquoteParser) Continue(node ast.Node, reader text.Reader, pc parser.Context) parser.State {
+	_, segment := reader.PeekLine()
+	state := p.BlockParser.Continue(node, reader, pc)
+	if state&parser.Continue != 0 {
+		recordQuoteMarker(node, reader, segment)
+	}
+	return state
+}
+
+func recordQuoteMarker(node ast.Node, reader text.Reader, segment text.Segment) {
+	marker := segment.Start + bytes.IndexByte(reader.Source()[segment.Start:segment.Stop], '>')
+	var markers []int
+	if value, ok := node.AttributeString("quoteMarkers"); ok {
+		markers = value.([]int)
+	}
+	node.SetAttributeString("quoteMarkers", append(markers, marker))
+}
+
+func (p blockquoteParser) Close(node ast.Node, reader text.Reader, pc parser.Context) {
+	line, _ := reader.Position()
+	node.SetAttributeString("quoteEnd", line)
+	p.BlockParser.Close(node, reader, pc)
+}
 
 func (p fencedParser) Open(parent ast.Node, reader text.Reader, pc parser.Context) (ast.Node, parser.State) {
 	_, segment := reader.PeekLine()
@@ -65,6 +107,7 @@ var markdown = goldmark.New(
 	goldmark.WithExtensions(extension.TaskList),
 	goldmark.WithParserOptions(parser.WithBlockParsers(
 		util.Prioritized(fencedParser{parser.NewFencedCodeBlockParser()}, 699),
+		util.Prioritized(blockquoteParser{parser.NewBlockquoteParser()}, 799),
 	), parser.WithParagraphTransformers(
 		util.Prioritized(tableParser{extension.NewTableParagraphTransformer()}, 200),
 	), parser.WithASTTransformers(
@@ -76,7 +119,7 @@ var markdown = goldmark.New(
 // reconstruct Markdown. Code contents and unsupported syntax stay literal.
 func project(source string) *projection {
 	data := []byte(source)
-	p := &projection{hidden: make([]bool, len(data)), formats: make([]format, len(data)), replacements: make(map[int]replacement), lines: sourceLines(source), codeLines: make(map[int]bool), tableLines: make(map[int][]projectedCell)}
+	p := &projection{hidden: make([]bool, len(data)), formats: make([]format, len(data)), replacements: make(map[int]replacement), lines: sourceLines(source), codeLines: make(map[int]bool), quoteLines: make(map[int]bool), tableLines: make(map[int][]projectedCell)}
 	hide := func(a, b int) {
 		for i := max(0, a); i < min(len(data), b); i++ {
 			p.hidden[i] = true
@@ -95,6 +138,19 @@ func project(source string) *projection {
 			return t.Segment.Start, t.Segment.Stop
 		}
 		switch node := n.(type) {
+		case *ast.Blockquote:
+			start, _ := node.AttributeString("quoteStart")
+			end, _ := node.AttributeString("quoteEnd")
+			for index := start.(int); index < min(end.(int), len(p.lines)); index++ {
+				p.quoteLines[index] = true
+				line := p.lines[index]
+				style(line.start, line.after, blockquote)
+			}
+			if value, ok := node.AttributeString("quoteMarkers"); ok {
+				for _, marker := range value.([]int) {
+					p.replacements[marker] = replacement{marker + 1, "  "}
+				}
+			}
 		case *ast.FencedCodeBlock:
 			for _, name := range []string{"openingFence", "closingFence"} {
 				if offset, ok := node.AttributeString(name); ok {
@@ -183,8 +239,15 @@ func project(source string) *projection {
 				line := p.lines[lineAt(p.lines, seg.Start)]
 				style(line.start, line.end, f)
 				prefix := source[line.start:seg.Start]
-				if strings.HasPrefix(strings.TrimLeft(prefix, " \t"), "#") {
-					hide(line.start, seg.Start)
+				prefixStart := 0
+				if marker := strings.LastIndexByte(prefix, '>'); marker >= 0 {
+					prefixStart = marker + 1
+					for prefixStart < len(prefix) && (prefix[prefixStart] == ' ' || prefix[prefixStart] == '\t') {
+						prefixStart++
+					}
+				}
+				if strings.HasPrefix(strings.TrimLeft(prefix[prefixStart:], " \t"), "#") {
+					hide(line.start+prefixStart, seg.Start)
 					if strings.Trim(source[seg.Stop:line.end], "# \t\r\n") == "" {
 						hide(seg.Stop, line.end)
 					}
@@ -197,7 +260,7 @@ func project(source string) *projection {
 				line := p.lines[lineAt(p.lines, seg.Start)]
 				prefix := source[line.start:seg.Start]
 				marker := strings.IndexAny(prefix, "-*+")
-				if marker >= 0 && strings.TrimSpace(prefix[:marker]) == "" {
+				if marker >= 0 && strings.Trim(prefix[:marker], " \t>") == "" {
 					p.replacements[line.start+marker] = replacement{line.start + marker + 1, "•"}
 				}
 				if seg.Start+3 <= len(data) && data[seg.Start] == '[' && data[seg.Start+2] == ']' {
@@ -216,4 +279,15 @@ func project(source string) *projection {
 	}
 	visit(markdown.Parser().Parse(text.NewReader(data)))
 	return p
+}
+
+func (p *projection) lineFormat(index int) format {
+	var f format
+	if p.quoteLines[index] {
+		f |= blockquote
+	}
+	if p.codeLines[index] {
+		f |= codeBlock
+	}
+	return f
 }

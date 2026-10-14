@@ -227,9 +227,9 @@ func (a *app) render() {
 		a.screen.HideCursor()
 	} else {
 		for r := a.top; r < len(a.layout.rows) && r-a.top < height && r-a.top+1 < h-2; r++ {
-			if a.projection.codeLines[a.layout.rows[r].line] {
+			if f := a.projection.lineFormat(a.layout.rows[r].line); f != 0 {
 				for x := 0; x < w; x++ {
-					a.screen.SetContent(x, r-a.top+1, ' ', nil, cellStyle(codeBlock))
+					a.screen.SetContent(x, r-a.top+1, ' ', nil, cellStyle(f))
 				}
 			}
 			for _, cell := range a.layout.rows[r].cells {

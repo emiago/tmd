@@ -45,6 +45,8 @@ func Render(out io.Writer, source string, styled bool) error {
 				}
 				if f&codeBlock != 0 {
 					codes = append(codes, "48;2;22;22;22")
+				} else if f&blockquote != 0 {
+					codes = append(codes, "48;2;24;28;36")
 				}
 				result.WriteString("\x1b[" + strings.Join(codes, ";") + "m")
 			}
@@ -55,7 +57,7 @@ func Render(out io.Writer, source string, styled bool) error {
 	for pos := 0; pos < len(source); {
 		if lineIndex, ok := tableStarts[pos]; ok {
 			for _, cell := range p.tableLines[lineIndex] {
-				write(cell.text, cell.format)
+				write(cell.text, cell.format|p.lineFormat(lineIndex))
 			}
 			pos = p.lines[lineIndex].end
 			continue

@@ -46,13 +46,31 @@ the build. Run it without arguments to show help.
 
 ## How it feels
 
-Read headings, **bold**, *italic*, inline code, lists, task checkboxes, and tables as
+Read headings, **bold**, *italic*, inline code, lists, task checkboxes, blockquotes, and tables as
 Markdown. Move onto a line and its source appears, ready for ordinary text
 editing. Leave the line and it renders again. Your document stays Markdown
 throughout; there is no conversion step.
 
 Level-one headings use bold, bright yellow text. Levels two and three use bold
 gold text, and levels four through six use gold text without added emphasis.
+
+Blockquotes (`> quoted text`) use a darker background with a subtle blue tint
+across the full row, including wrapped and blank quoted lines. Each `>` marker
+renders as two spaces, and the active line exposes its original Markdown for
+editing. Styled `--render` output uses the same background and spacing.
+
+Open this file with `go run ./cmd/tmd README.md` to try the blockquote below.
+Move onto a quoted line to edit its source, then move away to see it rendered.
+
+> **Blockquote demo:** this text should have a darker, slightly blue background.
+>
+> This longer quoted line should keep its darker blue background when it wraps across several screen rows in a narrow terminal window.
+>
+> > A nested quote with *italic text* and `inline code`.
+>
+> - [x] A quoted task with **bold text**.
+
+This ordinary paragraph should return to the normal background.
 
 ```text
 tmd  notes.md *                                      4:12

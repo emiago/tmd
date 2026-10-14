@@ -23,7 +23,7 @@ func TestRenderTables(t *testing.T) {
 		{"escaped pipe", "A | B\n--- | ---\nx\\|y | z", "│ A   │ B │\n├─────┼───┤\n│ x|y │ z │"},
 		{"combining text and emoji", "A | B\n--- | ---\ne\u0301 | 👩‍💻", "│ A │ B  │\n├───┼────┤\n│ e\u0301 │ 👩‍💻 │"},
 		{"tab stops", "A | B\n--- | ---\na\tb | x", "│ A     │ B │\n├───────┼───┤\n│ a   b │ x │"},
-		{"blockquote", "> A | B\n> --- | ---\n> x | y", "> │ A │ B │\n> ├───┼───┤\n> │ x │ y │"},
+		{"blockquote", "> A | B\n> --- | ---\n> x | y", "   │ A │ B │\n   ├───┼───┤\n   │ x │ y │"},
 		{"list", "- A | B\n  --- | ---\n  x | y", "- │ A │ B │\n  ├───┼───┤\n  │ x │ y │"},
 		{"invalid delimiter", "A | B\n--- | nope\nx | y", "A | B\n--- | nope\nx | y"},
 		{"mismatched header", "A | B\n---\nx | y", "A | B\n---\nx | y"},
@@ -81,7 +81,7 @@ func TestTableFitting(t *testing.T) {
 		{
 			name: "blockquote", width: 16,
 			source: "> A | B\n> --- | ---\n> hello world | x",
-			want:   []string{"> │ A      │ B │", "> ├────────┼───┤", "> │ hello  │ x │", "> │ world  │   │"},
+			want:   []string{"   │ A     │ B │", "   ├───────┼───┤", "   │ hello │ x │", "   │ world │   │"},
 		},
 		{
 			name: "tabs and empty cells", width: 9,
