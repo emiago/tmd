@@ -10,7 +10,7 @@ import (
 
 var baseStyle = tcell.StyleDefault.
 	Foreground(tcell.NewHexColor(0xe6e6e6)).
-	Background(tcell.NewHexColor(0x202020))
+	Background(tcell.NewHexColor(0x181818))
 
 var codeBackground = tcell.NewHexColor(0x161616)
 var quoteBackground = tcell.NewHexColor(0x181c24)

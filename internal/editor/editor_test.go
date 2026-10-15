@@ -96,7 +96,7 @@ func TestFencedCodeBackground(t *testing.T) {
 				if bg == tcell.ColorDefault {
 					_, bg, _ = baseStyle.Decompose()
 				}
-				want := tcell.NewHexColor(0x202020)
+				want := tcell.NewHexColor(0x181818)
 				if row.line >= 1 && row.line <= 4 {
 					want = tcell.NewHexColor(0x161616)
 				}
@@ -115,7 +115,7 @@ func TestFencedCodeBackground(t *testing.T) {
 	for x := 0; x < 8; x++ {
 		_, _, style, _ := screen.GetContent(x, 1)
 		_, bg, _ := style.Decompose()
-		if bg != tcell.ColorDefault && bg != tcell.NewHexColor(0x202020) {
+		if bg != tcell.ColorDefault && bg != tcell.NewHexColor(0x181818) {
 			t.Fatal("block background persisted after editing away the block")
 		}
 	}

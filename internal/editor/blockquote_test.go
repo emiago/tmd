@@ -93,7 +93,7 @@ func TestBlockquoteScreenBackgroundAndEditing(t *testing.T) {
 		t.Helper()
 		width, _ := screen.Size()
 		for index, row := range a.layout.rows {
-			want := tcell.NewHexColor(0x202020)
+			want := tcell.NewHexColor(0x181818)
 			if row.line >= 1 && row.line <= 7 {
 				want = tcell.NewHexColor(0x181c24)
 			}
@@ -145,7 +145,7 @@ func TestBlockquoteScreenBackgroundAndEditing(t *testing.T) {
 	for x := 0; x < 40; x++ {
 		_, _, style, _ := screen.GetContent(x, 1)
 		_, bg, _ := style.Decompose()
-		if bg != tcell.ColorDefault && bg != tcell.NewHexColor(0x202020) {
+		if bg != tcell.ColorDefault && bg != tcell.NewHexColor(0x181818) {
 			t.Fatal("quote background persisted after removing the quote")
 		}
 	}
